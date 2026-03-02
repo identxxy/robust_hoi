@@ -26,6 +26,95 @@ import os
 RUN_ON_SERVER = os.getenv("RUN_ON_SERVER", "").lower() == "true"
 device = "cuda"
 
+# ---------------------------------------------------------------------------
+# FoundationPose lazy-initialization cache
+# ---------------------------------------------------------------------------
+_foundation_pose_cache: Dict = {}
+
+
+def _get_foundation_pose(mesh, debug_dir=None):
+    """Return a cached FoundationPose estimator, creating it on first call.
+
+    The scorer and refiner networks are expensive to load, so we keep a single
+    instance alive across frames.  When the mesh object identity changes the
+    estimator is rebuilt.
+    """
+    import trimesh
+
+    mesh_id = id(mesh)
+    cached = _foundation_pose_cache.get("instance")
+    if cached is not None and _foundation_pose_cache.get("mesh_id") == mesh_id:
+        return cached
+
+    # Add FoundationPose to sys.path so its internal imports resolve.
+    fp_root = str(project_root / "third_party" / "FoundationPose")
+    if fp_root not in sys.path:
+        sys.path.insert(0, fp_root)
+
+    from estimater import FoundationPose
+    from learning.training.predict_score import ScorePredictor
+    from learning.training.predict_pose_refine import PoseRefinePredictor
+
+    scorer = ScorePredictor()
+    refiner = PoseRefinePredictor()
+    glctx = dr.RasterizeCudaContext()
+    dbg = debug_dir or "/tmp/foundation_pose_debug"
+
+    est = FoundationPose(
+        model_pts=mesh.vertices,
+        model_normals=mesh.vertex_normals,
+        mesh=mesh,
+        scorer=scorer,
+        refiner=refiner,
+        glctx=glctx,
+        debug=0,
+        debug_dir=dbg,
+    )
+    _foundation_pose_cache["instance"] = est
+    _foundation_pose_cache["mesh_id"] = mesh_id
+    print(f"[FoundationPose] Initialized estimator (mesh {len(mesh.vertices)} verts)")
+    return est
+
+
+def _run_foundation_pose_track(obj_mesh, rgb, depth, ob_mask, K, current_o2c, debug_dir=None):
+    """Run FoundationPose tracking from *current_o2c* and return a refined 4x4 o2c pose.
+
+    Unlike full registration (240 hypotheses + scoring), tracking starts from
+    the given pose and runs a few refinement iterations, which is faster and
+    more stable when we already have a reasonable initial estimate.
+
+    Returns None if tracking fails or inputs are invalid.
+    """
+    if rgb is None or depth is None or K is None:
+        print("[FoundationPose] Missing inputs, skipping tracking")
+        return None
+
+    try:
+        est = _get_foundation_pose(obj_mesh, debug_dir=debug_dir)
+
+        # Convert current_o2c (original-mesh space) to centered-mesh space.
+        # FoundationPose stores pose_last in centered space:
+        #   pose_returned = pose_centered @ tf_to_center
+        # so pose_centered = pose_returned @ inv(tf_to_center)
+        # inv(tf_to_center) just translates by +model_center.
+        tf_to_center = est.get_tf_to_centered_mesh()          # (4,4) CUDA tensor
+        tf_from_center = torch.eye(4, device='cuda', dtype=torch.float)
+        tf_from_center[:3, 3] = -tf_to_center[:3, 3]          # +model_center
+
+        o2c_t = torch.as_tensor(current_o2c, device='cuda', dtype=torch.float)
+        est.pose_last = (o2c_t @ tf_from_center).reshape(1, 4, 4)
+
+        pose = est.track_one(rgb=rgb, depth=depth, K=K, iteration=5)
+        if pose is None or not np.isfinite(pose).all():
+            print("[FoundationPose] Tracking returned invalid pose")
+            return None
+        print(f"[FoundationPose] Tracking succeeded, pose translation: {pose[:3, 3]}")
+        return pose.astype(np.float64)
+    except Exception as exc:
+        print(f"[FoundationPose] Tracking failed: {exc}")
+        return None
+
+
 class TeeStream:
     """Duplicate writes to multiple streams."""
 
@@ -1418,6 +1507,33 @@ def _align_frame_with_sam3d(image_info_work, frame_idx, obj_mesh, max_pts=2000, 
     contact_status = _check_contact_and_reset(rotvec, trans, hand_verts_in_cam, obj_verts, image_info_work, frame_idx, device)
     if contact_status == "skip":
         return True  # initial pose already has good contact, skip optimization
+
+    if contact_status == "reset" and obj_mesh is not None:
+        images = image_info_work.get("images")
+        rgb_frame = images[frame_idx] if images is not None and frame_idx < len(images) else None
+        # Build current o2c from the (already-reset) rotvec/trans
+        with torch.no_grad():
+            current_R = rodrigues(rotvec).cpu().numpy()
+            current_t = trans.cpu().numpy()
+        current_o2c = np.eye(4, dtype=np.float64)
+        current_o2c[:3, :3] = current_R
+        current_o2c[:3, 3] = current_t
+
+        fp_pose = _run_foundation_pose_track(
+            obj_mesh, rgb_frame, d, None, K, current_o2c,
+            debug_dir=str(debug_dir) if debug_dir is not None else None,
+        )
+        if fp_pose is not None:
+            fp_rot = ScipyRotation.from_matrix(fp_pose[:3, :3]).as_rotvec().astype(np.float32)
+            rotvec.data.copy_(torch.tensor(fp_rot, device=device))
+            trans.data.copy_(torch.tensor(fp_pose[:3, 3].astype(np.float32), device=device))
+            best["R"] = fp_pose[:3, :3].copy()
+            best["t"] = fp_pose[:3, 3].copy()
+            # Write back to image_info_work so downstream code sees the updated pose
+            extrinsics[frame_idx, :3, :3] = fp_pose[:3, :3].astype(np.float32)
+            extrinsics[frame_idx, :3, 3] = fp_pose[:3, 3].astype(np.float32)
+            print(f"[align_depth] Frame {frame_idx}: initialized pose from FoundationPose tracking")
+    return True
 
     for it in range(num_iters):
         optimizer.zero_grad()
