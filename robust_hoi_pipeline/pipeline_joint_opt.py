@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import nvdiffrast.torch as dr
+from scipy.spatial import cKDTree
 from scipy.spatial.transform import Rotation as ScipyRotation
 
 
@@ -1931,13 +1932,23 @@ def _reset_pose_to_nearest_registered(image_info_work, frame_idx):
         print(f"[reproj_recovery] Reset frame {frame_idx} pose to nearest registered frame {nearest_idx}")
 
 
-def _reset_and_track_foundation_pose(image_info_work, frame_idx, obj_mesh, debug_dir=None):
-    """Reset frame pose to nearest registered frame, then refine with FoundationPose tracking.
+def _estimate_pose_from_nearest_registered(image_info_work, frame_idx):
+    """Return nearest registered frame pose as initial estimate (without updating frame pose)."""
+    nearest_idx = _find_nearest_registered_frame(image_info_work, frame_idx)
+    if nearest_idx is None:
+        return None, None
+    return image_info_work["extrinsics"][nearest_idx].astype(np.float64).copy(), nearest_idx
 
-    Updates ``image_info_work["extrinsics"][frame_idx]`` in-place if tracking succeeds.
-    Returns the tracked 4x4 o2c pose, or None if tracking was skipped/failed.
+
+def _reset_and_track_foundation_pose(image_info_work, frame_idx, obj_mesh, debug_dir=None):
+    """Estimate frame pose via nearest-pose reset + FoundationPose tracking.
+
+    Does not update ``image_info_work["extrinsics"][frame_idx]``.
+    Returns (estimated_o2c_pose, success).
     """
-    _reset_pose_to_nearest_registered(image_info_work, frame_idx)
+    if obj_mesh is None:
+        print("[FoundationPose] Missing mesh, skipping tracking")
+        return None, False
 
     images = image_info_work.get("images")
     rgb = images[frame_idx] if images is not None and frame_idx < len(images) else None
@@ -1946,17 +1957,139 @@ def _reset_and_track_foundation_pose(image_info_work, frame_idx, obj_mesh, debug
     intrinsics_arr = image_info_work.get("intrinsics")
     K = intrinsics_arr[frame_idx] if intrinsics_arr is not None and intrinsics_arr.ndim == 3 else intrinsics_arr
     K = K.astype(np.float64) if K is not None else None
-    current_o2c = image_info_work["extrinsics"][frame_idx].astype(np.float64)
+    current_o2c, nearest_idx = _estimate_pose_from_nearest_registered(image_info_work, frame_idx)
+    if current_o2c is None:
+        current_o2c = image_info_work["extrinsics"][frame_idx].astype(np.float64)
+        print(f"[FoundationPose] Frame {frame_idx}: no nearest registered frame, using current pose as init")
+    else:
+        print(f"[FoundationPose] Frame {frame_idx}: using nearest registered frame {nearest_idx} pose as init")
 
     fp_pose = _run_foundation_pose_track(
         obj_mesh, rgb, depth, None, K, current_o2c,
         debug_dir=str(debug_dir) if debug_dir is not None else None,
     )
-    if fp_pose is not None:
-        image_info_work["extrinsics"][frame_idx, :3, :3] = fp_pose[:3, :3].astype(np.float32)
-        image_info_work["extrinsics"][frame_idx, :3, 3] = fp_pose[:3, 3].astype(np.float32)
-        print(f"[FoundationPose] Frame {frame_idx}: refined pose via tracking")
-    return fp_pose
+    if fp_pose is None:
+        return None, False
+    print(f"[FoundationPose] Frame {frame_idx}: got tracking estimate")
+    return fp_pose, True
+
+
+def _build_depth_points_obj_for_pose(
+    image_info_work,
+    frame_idx,
+    extrinsic_o2c,
+    bbox_min=(-0.8, -0.8, -0.8),
+    bbox_max=(0.8, 0.8, 0.8),
+    max_pts=8000,
+):
+    """Build object-space depth points for a given pose with bbox outlier filtering."""
+    depth_priors = image_info_work.get("depth_priors")
+    if depth_priors is None or frame_idx >= len(depth_priors) or depth_priors[frame_idx] is None:
+        return None
+    depth_map = depth_priors[frame_idx]
+
+    intrinsics = image_info_work.get("intrinsics")
+    if intrinsics is None:
+        return None
+    K = intrinsics[frame_idx] if intrinsics.ndim == 3 else intrinsics
+    if K is None:
+        return None
+
+    vmask = (depth_map > 0) & np.isfinite(depth_map)
+    masks = image_info_work.get("image_masks")
+    if masks is not None and frame_idx < len(masks) and masks[frame_idx] is not None:
+        vmask = vmask & (masks[frame_idx] > 0)
+    ys, xs = np.where(vmask)
+    if len(ys) == 0:
+        return None
+
+    if len(ys) > max_pts:
+        sel = np.random.choice(len(ys), max_pts, replace=False)
+        ys, xs = ys[sel], xs[sel]
+
+    pts_cam = _depth_pixels_to_cam_points(depth_map, K, ys, xs)
+    pts_obj = _cam_points_to_object_points(pts_cam, np.asarray(extrinsic_o2c, dtype=np.float64))
+
+    bmin = np.asarray(bbox_min, dtype=np.float64)
+    bmax = np.asarray(bbox_max, dtype=np.float64)
+    in_bbox = np.all((pts_obj >= bmin) & (pts_obj <= bmax), axis=1)
+    pts_obj = pts_obj[in_bbox]
+    if len(pts_obj) == 0:
+        return None
+    return pts_obj.astype(np.float64)
+
+
+def _mean_nn_distance(src_pts, dst_pts):
+    """Mean nearest-neighbor distance from src points to dst points."""
+    if src_pts is None or dst_pts is None or len(src_pts) == 0 or len(dst_pts) == 0:
+        return np.inf
+    tree = cKDTree(dst_pts)
+    dists, _ = tree.query(src_pts, k=1)
+    if dists is None or len(dists) == 0:
+        return np.inf
+    dists = np.asarray(dists, dtype=np.float64)
+    dists = dists[np.isfinite(dists)]
+    if len(dists) == 0:
+        return np.inf
+    return float(dists.mean())
+
+
+def check_which_estimate_is_better_and_update(
+    image_info_work,
+    frame_idx,
+    pnp_pose,
+    pnp_success,
+    fp_pose,
+    fp_success,
+):
+    """Select and apply the better estimate pose using depth 3D NN distance in object space."""
+    candidates = []
+    if pnp_success and pnp_pose is not None:
+        candidates.append(("pnp", np.asarray(pnp_pose, dtype=np.float64)))
+    if fp_success and fp_pose is not None:
+        candidates.append(("foundation_pose", np.asarray(fp_pose, dtype=np.float64)))
+
+    if not candidates:
+        print(f"[pose_select] Frame {frame_idx}: no valid pose estimate candidates")
+        return None, False
+
+    nearest_idx = _find_nearest_registered_frame(image_info_work, frame_idx)
+    if nearest_idx is None:
+        src, pose = candidates[0]
+        image_info_work["extrinsics"][frame_idx, :3, :3] = pose[:3, :3].astype(np.float32)
+        image_info_work["extrinsics"][frame_idx, :3, 3] = pose[:3, 3].astype(np.float32)
+        print(f"[pose_select] Frame {frame_idx}: no nearby registered frame, choose {src}")
+        return pose, True
+
+    nearby_pose = image_info_work["extrinsics"][nearest_idx].astype(np.float64)
+    nearby_pts_obj = _build_depth_points_obj_for_pose(image_info_work, nearest_idx, nearby_pose)
+    if nearby_pts_obj is None:
+        src, pose = candidates[0]
+        image_info_work["extrinsics"][frame_idx, :3, :3] = pose[:3, :3].astype(np.float32)
+        image_info_work["extrinsics"][frame_idx, :3, 3] = pose[:3, 3].astype(np.float32)
+        print(f"[pose_select] Frame {frame_idx}: nearby depth points unavailable, choose {src}")
+        return pose, True
+
+    best_src = None
+    best_pose = None
+    best_score = np.inf
+    for src, pose in candidates:
+        curr_pts_obj = _build_depth_points_obj_for_pose(image_info_work, frame_idx, pose)
+        score = _mean_nn_distance(curr_pts_obj, nearby_pts_obj)
+        print(f"[pose_select] Frame {frame_idx}: {src} depth NN mean distance = {score:.6f}")
+        if score < best_score:
+            best_score = score
+            best_src = src
+            best_pose = pose
+
+    if best_pose is None:
+        print(f"[pose_select] Frame {frame_idx}: pose scoring failed")
+        return None, False
+
+    image_info_work["extrinsics"][frame_idx, :3, :3] = best_pose[:3, :3].astype(np.float32)
+    image_info_work["extrinsics"][frame_idx, :3, 3] = best_pose[:3, 3].astype(np.float32)
+    print(f"[pose_select] Frame {frame_idx}: selected {best_src} (score={best_score:.6f})")
+    return best_pose, True
 
 
 def _check_contact_and_reset(rotvec, trans, hand_verts_in_cam, obj_verts, image_info_work, frame_idx, device, thresh_contact=0.02):
@@ -2136,9 +2269,22 @@ def register_remaining_frames(image_info, preprocessed_data, output_dir: Path, c
             print_image_info_stats(image_info_work, invalid_cnt)
             continue
 
-        sucess = register_new_frame_by_PnP(image_info_work, next_frame_idx, args)
-        if not sucess:
-            print(f"[register_remaining_frames] PnP registration failed for frame {next_frame_idx}, trying to recover by resetting pose to nearest registered frame")
+        pnp_pose, pnp_success = register_new_frame_by_PnP(
+            image_info_work, next_frame_idx, args, update_pose=False, return_pose=True
+        )
+        fp_pose, fp_success = _reset_and_track_foundation_pose(
+            image_info_work, next_frame_idx, sam3d_mesh, debug_dir=debug_dir
+        )
+        _, estimate_success = check_which_estimate_is_better_and_update(
+            image_info_work,
+            next_frame_idx,
+            pnp_pose=pnp_pose,
+            pnp_success=pnp_success,
+            fp_pose=fp_pose,
+            fp_success=fp_success,
+        )
+        if not estimate_success:
+            print(f"[register_remaining_frames] Pose estimation failed for frame {next_frame_idx}, resetting to nearest registered frame")
             _reset_pose_to_nearest_registered(image_info_work, next_frame_idx)
         # Save depth 3D points in object space for this frame
         _save_depth_points_obj(image_info_work, next_frame_idx, tag="after_PnP")
