@@ -1945,6 +1945,7 @@ def _reset_and_track_foundation_pose(image_info_work, frame_idx, obj_mesh, debug
     depth = depth_priors[frame_idx] if depth_priors is not None and frame_idx < len(depth_priors) else None
     intrinsics_arr = image_info_work.get("intrinsics")
     K = intrinsics_arr[frame_idx] if intrinsics_arr is not None and intrinsics_arr.ndim == 3 else intrinsics_arr
+    K = K.astype(np.float64) if K is not None else None
     current_o2c = image_info_work["extrinsics"][frame_idx].astype(np.float64)
 
     fp_pose = _run_foundation_pose_track(
