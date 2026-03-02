@@ -1496,45 +1496,20 @@ def _align_frame_with_sam3d(image_info_work, frame_idx, obj_mesh, max_pts=2000, 
     obs_depth = torch.tensor(d.astype(np.float32), dtype=torch.float32, device=device)
     obs_mask = _build_observation_mask(H, W, ys, xs, device)
 
+
+
+    # Check initial contact loss; if hand is too far from object, reset pose to nearby frame
+    contact_status = _check_contact_and_reset(rotvec, trans, hand_verts_in_cam, obj_verts, image_info_work, frame_idx, device)
+    if contact_status == "skip":
+        return True  # skip optimization but consider frame aligned to avoid blocking future frames
+
     ext0 = extrinsics[frame_idx].astype(np.float64)
     init_rot = ScipyRotation.from_matrix(ext0[:3, :3]).as_rotvec().astype(np.float32)
     rotvec = torch.tensor(init_rot, dtype=torch.float32, device=device, requires_grad=True)
     trans = torch.tensor(ext0[:3, 3].astype(np.float32), dtype=torch.float32, device=device, requires_grad=True)
 
     optimizer = torch.optim.Adam([rotvec, trans], lr=10e-3)
-    best = {"loss": float("inf"), "R": ext0[:3, :3].copy(), "t": ext0[:3, 3].copy(), "valid": 0}
-
-    # Check initial contact loss; if hand is too far from object, reset pose to nearby frame
-    contact_status = _check_contact_and_reset(rotvec, trans, hand_verts_in_cam, obj_verts, image_info_work, frame_idx, device)
-    if contact_status == "skip":
-        return True  # initial pose already has good contact, skip optimization
-
-    if contact_status == "reset" and obj_mesh is not None:
-        images = image_info_work.get("images")
-        rgb_frame = images[frame_idx] if images is not None and frame_idx < len(images) else None
-        # Build current o2c from the (already-reset) rotvec/trans
-        with torch.no_grad():
-            current_R = rodrigues(rotvec).cpu().numpy()
-            current_t = trans.cpu().numpy()
-        current_o2c = np.eye(4, dtype=np.float64)
-        current_o2c[:3, :3] = current_R
-        current_o2c[:3, 3] = current_t
-
-        fp_pose = _run_foundation_pose_track(
-            obj_mesh, rgb_frame, d, None, K, current_o2c,
-            debug_dir=str(debug_dir) if debug_dir is not None else None,
-        )
-        if fp_pose is not None:
-            fp_rot = ScipyRotation.from_matrix(fp_pose[:3, :3]).as_rotvec().astype(np.float32)
-            rotvec.data.copy_(torch.tensor(fp_rot, device=device))
-            trans.data.copy_(torch.tensor(fp_pose[:3, 3].astype(np.float32), device=device))
-            best["R"] = fp_pose[:3, :3].copy()
-            best["t"] = fp_pose[:3, 3].copy()
-            # Write back to image_info_work so downstream code sees the updated pose
-            extrinsics[frame_idx, :3, :3] = fp_pose[:3, :3].astype(np.float32)
-            extrinsics[frame_idx, :3, 3] = fp_pose[:3, 3].astype(np.float32)
-            print(f"[align_depth] Frame {frame_idx}: initialized pose from FoundationPose tracking")
-    return True
+    best = {"loss": float("inf"), "R": ext0[:3, :3].copy(), "t": ext0[:3, 3].copy(), "valid": 0}            
 
     for it in range(num_iters):
         optimizer.zero_grad()
@@ -1956,6 +1931,33 @@ def _reset_pose_to_nearest_registered(image_info_work, frame_idx):
         print(f"[reproj_recovery] Reset frame {frame_idx} pose to nearest registered frame {nearest_idx}")
 
 
+def _reset_and_track_foundation_pose(image_info_work, frame_idx, obj_mesh, debug_dir=None):
+    """Reset frame pose to nearest registered frame, then refine with FoundationPose tracking.
+
+    Updates ``image_info_work["extrinsics"][frame_idx]`` in-place if tracking succeeds.
+    Returns the tracked 4x4 o2c pose, or None if tracking was skipped/failed.
+    """
+    _reset_pose_to_nearest_registered(image_info_work, frame_idx)
+
+    images = image_info_work.get("images")
+    rgb = images[frame_idx] if images is not None and frame_idx < len(images) else None
+    depth_priors = image_info_work.get("depth_priors")
+    depth = depth_priors[frame_idx] if depth_priors is not None and frame_idx < len(depth_priors) else None
+    intrinsics_arr = image_info_work.get("intrinsics")
+    K = intrinsics_arr[frame_idx] if intrinsics_arr is not None and intrinsics_arr.ndim == 3 else intrinsics_arr
+    current_o2c = image_info_work["extrinsics"][frame_idx].astype(np.float64)
+
+    fp_pose = _run_foundation_pose_track(
+        obj_mesh, rgb, depth, None, K, current_o2c,
+        debug_dir=str(debug_dir) if debug_dir is not None else None,
+    )
+    if fp_pose is not None:
+        image_info_work["extrinsics"][frame_idx, :3, :3] = fp_pose[:3, :3].astype(np.float32)
+        image_info_work["extrinsics"][frame_idx, :3, 3] = fp_pose[:3, 3].astype(np.float32)
+        print(f"[FoundationPose] Frame {frame_idx}: refined pose via tracking")
+    return fp_pose
+
+
 def _check_contact_and_reset(rotvec, trans, hand_verts_in_cam, obj_verts, image_info_work, frame_idx, device, thresh_contact=0.02):
     """Check initial contact loss and reset pose to nearby frame if too large.
 
@@ -2150,6 +2152,11 @@ def register_remaining_frames(image_info, preprocessed_data, output_dir: Path, c
         
         reproj_ok, mean_error = check_reprojection_error(image_info_work, next_frame_idx, args)
         is_moved = _check_pose_moved(image_info_work, next_frame_idx)
+        debug_dir = output_dir / "pipeline_joint_opt" / f"debug_frame_{image_info_work['frame_indices'][next_frame_idx]:04d}_{image_info_work['registered'].sum():04d}"
+        if RUN_ON_SERVER:
+            debug_dir = None
+        if 1:
+            _reset_and_track_foundation_pose(image_info_work, next_frame_idx, sam3d_mesh, debug_dir=debug_dir)
 
         if is_moved:
             print(f"[register_remaining_frames] Frame {next_frame_idx} align depth to mesh due to high reprojection error")
