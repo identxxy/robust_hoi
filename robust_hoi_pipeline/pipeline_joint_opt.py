@@ -1498,17 +1498,16 @@ def _align_frame_with_sam3d(image_info_work, frame_idx, obj_mesh, max_pts=2000, 
     obs_mask = _build_observation_mask(H, W, ys, xs, device)
 
 
-
     # Check initial contact loss; if hand is too far from object, reset pose to nearby frame
-    contact_status = _check_contact_and_reset(rotvec, trans, hand_verts_in_cam, obj_verts, image_info_work, frame_idx, device)
+    contact_status = _check_contact_and_reset(hand_verts_in_cam, obj_verts, image_info_work, frame_idx, device)
     if contact_status == "skip":
         return True  # skip optimization but consider frame aligned to avoid blocking future frames
 
-    ext0 = extrinsics[frame_idx].astype(np.float64)
+    # Initialize optimization vars from current frame pose in image_info_work.
+    ext0 = image_info_work["extrinsics"][frame_idx].astype(np.float64)
     init_rot = ScipyRotation.from_matrix(ext0[:3, :3]).as_rotvec().astype(np.float32)
     rotvec = torch.tensor(init_rot, dtype=torch.float32, device=device, requires_grad=True)
     trans = torch.tensor(ext0[:3, 3].astype(np.float32), dtype=torch.float32, device=device, requires_grad=True)
-
     optimizer = torch.optim.Adam([rotvec, trans], lr=10e-3)
     best = {"loss": float("inf"), "R": ext0[:3, :3].copy(), "t": ext0[:3, 3].copy(), "valid": 0}            
 
@@ -2092,7 +2091,7 @@ def check_which_estimate_is_better_and_update(
     return best_pose, True
 
 
-def _check_contact_and_reset(rotvec, trans, hand_verts_in_cam, obj_verts, image_info_work, frame_idx, device, thresh_contact=0.02):
+def _check_contact_and_reset(hand_verts_in_cam, obj_verts, image_info_work, frame_idx, device, thresh_contact=0.02):
     """Check initial contact loss and reset pose to nearby frame if too large.
 
     Returns:
@@ -2103,6 +2102,12 @@ def _check_contact_and_reset(rotvec, trans, hand_verts_in_cam, obj_verts, image_
     if hand_verts_in_cam is None:
         return "ok"
     with torch.no_grad():
+        # Initialize optimization vars from current frame pose in image_info_work.
+        ext0 = image_info_work["extrinsics"][frame_idx].astype(np.float64)
+        init_rot = ScipyRotation.from_matrix(ext0[:3, :3]).as_rotvec().astype(np.float32)
+        rotvec = torch.tensor(init_rot, dtype=torch.float32, device=device, requires_grad=True)
+        trans = torch.tensor(ext0[:3, 3].astype(np.float32), dtype=torch.float32, device=device, requires_grad=True)
+
         R_init = rodrigues(rotvec)
         hand_in_obj = ((hand_verts_in_cam[0] - trans[None, :]) @ R_init).unsqueeze(0)
         contact_loss = _compute_contact_loss(hand_in_obj, obj_verts, device)
@@ -2289,23 +2294,13 @@ def register_remaining_frames(image_info, preprocessed_data, output_dir: Path, c
         # Save depth 3D points in object space for this frame
         _save_depth_points_obj(image_info_work, next_frame_idx, tag="after_PnP")
         mask_track_for_outliers(image_info_work, next_frame_idx, args.pnp_reproj_thresh, min_track_number=1)
-        # _filter_depth_by_object_bbox(image_info_work, next_frame_idx)
-        
-
-        # if not _refine_frame_pose_3d(image_info_work, next_frame_idx, args):
-        #     image_info["invalid"][next_frame_idx] = image_info_work["invalid"][next_frame_idx] = True     
-        #     print(f"[register_remaining_frames] Frame {next_frame_idx} marked as invalid due to 3D-3D correspondences refinement failure")
-        #     invalid_cnt["3d_3d_corr"] += 1
-        #     save_results(image_info=image_info, register_idx= image_info['frame_indices'][next_frame_idx], preprocessed_data=preprocessed_data, results_dir=output_dir / "pipeline_joint_opt", only_save_register_order=args.only_save_register_order)
-        #     print_image_info_stats(image_info_work, invalid_cnt)
-        #     continue
+        _filter_depth_by_object_bbox(image_info_work, next_frame_idx)
         
         reproj_ok, mean_error = check_reprojection_error(image_info_work, next_frame_idx, args)
         is_moved = _check_pose_moved(image_info_work, next_frame_idx)
             
 
-        # if is_moved:
-        if 0:
+        if is_moved:
             print(f"[register_remaining_frames] Frame {next_frame_idx} align depth to mesh due to high reprojection error")
             # _reset_pose_to_nearest_registered(image_info_work, next_frame_idx)
             # _save_depth_points_obj(image_info_work, next_frame_idx, tag="after_reset_when_pnp_fail")
