@@ -197,6 +197,7 @@ def align_pred_to_gt(valid_extrinsics, gt_o2c, valid_frame_indices,
         if anchor_idx is None:
             raise ValueError(
                 "No registered frame found in valid_frame_indices for alignment")
+    # anchor_idx = 0 # hardcode to use the first valid frame as anchor
     align_tf = np.linalg.inv(valid_extrinsics[anchor_idx]) @ gt_o2c[anchor_idx]
     return valid_extrinsics @ align_tf
 
@@ -235,7 +236,7 @@ def compute_frustum_lines(K, H, W, c2o, depth=0.02):
 
 
 def visualize_gt_and_pred_in_rerun(data_gt, pred_extrinsics, frame_indices, SAM3D_dir,
-                                   jpeg_quality=85, world_mode="camera"):
+                                   jpeg_quality=85, world_mode="camera", history_window=50):
     """Visualize GT and predicted poses with meshes in rerun.
 
     Args:
@@ -287,9 +288,16 @@ def visualize_gt_and_pred_in_rerun(data_gt, pred_extrinsics, frame_indices, SAM3
         if gt_vertex_colors is not None:
             mesh_kwargs["vertex_colors"] = gt_vertex_colors
     if world_mode == "object":
-        # Object-centric: mesh at identity, cameras shown frame by frame.
+        # Object-centric: mesh at identity, cameras shown frame by frame
+        # with sliding history window.
         if mesh_kwargs:
             rr.log("world/object/mesh", rr.Mesh3D(**mesh_kwargs), static=True)
+
+        segs_per_frustum = 8
+        max_history_segs = history_window * segs_per_frustum
+        pred_history_segs = []
+        gt_history_segs = []
+
         for i, fid in enumerate(frame_indices):
             rr.set_time_sequence("frame", i)
 
@@ -300,18 +308,30 @@ def visualize_gt_and_pred_in_rerun(data_gt, pred_extrinsics, frame_indices, SAM3
             pred_c2o = np.linalg.inv(pred_extrinsics[i]).astype(np.float32)
             if img is not None and K_pred is not None:
                 H, W = img.shape[:2]
-                segs = compute_frustum_lines(K_pred, H, W, pred_c2o, depth=0.02)
-                rr.log(f"world/pred_camera/frustum_{i}",
-                       rr.LineStrips3D(segs, colors=[[0, 120, 255]]), static=True)
+                segs = compute_frustum_lines(K_pred, H, W, pred_c2o, depth=0.1)
+                # Current frame frustum (bright)
+                rr.log("world/pred_camera/frustum",
+                       rr.LineStrips3D(segs, colors=[[0, 120, 255]]))
+                # Sliding history window (dimmed)
+                pred_history_segs.extend(segs)
+                if len(pred_history_segs) > max_history_segs:
+                    pred_history_segs = pred_history_segs[-max_history_segs:]
+                rr.log("world/pred_camera/history",
+                       rr.LineStrips3D(pred_history_segs, colors=[[0, 60, 128]]))
 
             if i < len(gt_o2c) and bool(gt_is_valid[i]):
                 gt_c2o = np.linalg.inv(gt_o2c[i]).astype(np.float32)
                 if img is not None:
                     H, W = img.shape[:2]
                     gt_K_i = gt_K if gt_K.ndim == 2 else gt_K[i]
-                    segs = compute_frustum_lines(gt_K_i, H, W, gt_c2o, depth=0.02)
-                    rr.log(f"world/gt_camera/frustum_{i}",
-                           rr.LineStrips3D(segs, colors=[[0, 200, 0]]), static=True)
+                    segs = compute_frustum_lines(gt_K_i, H, W, gt_c2o, depth=0.1)
+                    rr.log("world/gt_camera/frustum",
+                           rr.LineStrips3D(segs, colors=[[0, 200, 0]]))
+                    gt_history_segs.extend(segs)
+                    if len(gt_history_segs) > max_history_segs:
+                        gt_history_segs = gt_history_segs[-max_history_segs:]
+                    rr.log("world/gt_camera/history",
+                           rr.LineStrips3D(gt_history_segs, colors=[[0, 100, 0]]))
     else:
         # Camera-centric (default): camera fixed, object moves per frame.
         if mesh_kwargs:
@@ -626,6 +646,7 @@ def main(args):
     visualize_gt_and_pred_in_rerun(
         data_gt, aligned_pred_extrinsics, data_pred["valid_frame_indices"], SAM3D_dir,
         jpeg_quality=args.jpeg_quality, world_mode=args.world_mode,
+        history_window=args.history_window,
     )
     
 
@@ -649,6 +670,8 @@ def parse_args():
                          choices=["camera", "object"],
                          help="'camera': camera fixed, object moves. "
                               "'object': object fixed at identity, cameras move.")
+    parser.add_argument("--history_window", type=int, default=50,
+                         help="Number of past camera frustums to show in object mode")
     
     args = parser.parse_args()
     from easydict import EasyDict
