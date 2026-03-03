@@ -90,30 +90,26 @@ def _run_foundation_pose_track(obj_mesh, rgb, depth, ob_mask, K, current_o2c, de
         print("[FoundationPose] Missing inputs, skipping tracking")
         return None
 
-    try:
-        est = _get_foundation_pose(obj_mesh, debug_dir=debug_dir)
 
-        # Convert current_o2c (original-mesh space) to centered-mesh space.
-        # FoundationPose stores pose_last in centered space:
-        #   pose_returned = pose_centered @ tf_to_center
-        # so pose_centered = pose_returned @ inv(tf_to_center)
-        # inv(tf_to_center) just translates by +model_center.
-        tf_to_center = est.get_tf_to_centered_mesh()          # (4,4) CUDA tensor
-        tf_from_center = torch.eye(4, device='cuda', dtype=torch.float)
-        tf_from_center[:3, 3] = -tf_to_center[:3, 3]          # +model_center
+    est = _get_foundation_pose(obj_mesh, debug_dir=debug_dir)
 
-        o2c_t = torch.as_tensor(current_o2c, device='cuda', dtype=torch.float)
-        est.pose_last = (o2c_t @ tf_from_center).reshape(1, 4, 4)
+    # Convert current_o2c (original-mesh space) to centered-mesh space.
+    # FoundationPose stores pose_last in centered space:
+    #   pose_returned = pose_centered @ tf_to_center
+    # so pose_centered = pose_returned @ inv(tf_to_center)
+    # inv(tf_to_center) just translates by +model_center.
+    tf_to_center = est.get_tf_to_centered_mesh()          # (4,4) CUDA tensor
+    tf_from_center = torch.eye(4, device='cuda', dtype=torch.float)
+    tf_from_center[:3, 3] = -tf_to_center[:3, 3]          # +model_center
 
-        pose = est.track_one(rgb=rgb, depth=depth, K=K, iteration=5)
-        if pose is None or not np.isfinite(pose).all():
-            print("[FoundationPose] Tracking returned invalid pose")
-            return None
-        print(f"[FoundationPose] Tracking succeeded, pose translation: {pose[:3, 3]}")
-        return pose.astype(np.float64)
-    except Exception as exc:
-        print(f"[FoundationPose] Tracking failed: {exc}")
-        return None
+    o2c_t = torch.as_tensor(current_o2c, device='cuda', dtype=torch.float)
+    est.pose_last = (o2c_t @ tf_from_center).reshape(1, 4, 4)
+
+    pose = est.track_one(rgb=rgb, depth=depth, K=K, iteration=5)
+    if pose is None or not np.isfinite(pose).all():
+        raise RuntimeError("[FoundationPose] Tracking returned invalid pose")
+    print(f"[FoundationPose] Tracking succeeded, pose translation: {pose[:3, 3]}")
+    return pose.astype(np.float64)
 
 
 class TeeStream:
