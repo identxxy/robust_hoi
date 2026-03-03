@@ -22,6 +22,21 @@ from utils_simba.geometry import transform_points
 device = "cuda:0"
 
 
+def compute_vertex_normals(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """Compute per-vertex normals by averaging adjacent face normals."""
+    v0 = vertices[faces[:, 0]]
+    v1 = vertices[faces[:, 1]]
+    v2 = vertices[faces[:, 2]]
+    face_normals = np.cross(v1 - v0, v2 - v0)
+    vertex_normals = np.zeros_like(vertices)
+    np.add.at(vertex_normals, faces[:, 0], face_normals)
+    np.add.at(vertex_normals, faces[:, 1], face_normals)
+    np.add.at(vertex_normals, faces[:, 2], face_normals)
+    norms = np.linalg.norm(vertex_normals, axis=1, keepdims=True)
+    norms = np.maximum(norms, 1e-8)
+    return vertex_normals / norms
+
+
 def load_mesh_as_trimesh(mesh_path: Path):
     """Load a mesh file and return a single Trimesh (supports scene-based GLB)."""
     loaded = trimesh.load(str(mesh_path), process=False)
@@ -235,7 +250,7 @@ def compute_frustum_lines(K, H, W, c2o, depth=0.02):
     return segments
 
 
-def visualize_gt_and_pred_in_rerun(data_gt, pred_extrinsics, frame_indices, SAM3D_dir,
+def visualize_gt_and_pred_in_rerun(data_gt, data_pred, pred_extrinsics, frame_indices, SAM3D_dir,
                                    jpeg_quality=85, world_mode="camera", history_window=50):
     """Visualize GT and predicted poses with meshes in rerun.
 
@@ -278,6 +293,61 @@ def visualize_gt_and_pred_in_rerun(data_gt, pred_extrinsics, frame_indices, SAM3
     gt_is_valid = data_gt["is_valid"].numpy() if torch.is_tensor(data_gt["is_valid"]) else np.array(data_gt["is_valid"])
     gt_K = data_gt["K"].numpy() if torch.is_tensor(data_gt["K"]) else np.array(data_gt["K"])
     data_preprocess_dir = SAM3D_dir.parent / "pipeline_preprocess"
+
+    # Hand mesh payloads in camera space.
+    pred_hand_verts_cam = data_pred.get("v3d_c.right")
+    pred_hand_faces = data_pred.get("faces.right")
+    gt_hand_verts_cam = data_gt.get("v3d_c.right")
+    gt_hand_faces = data_gt.get("faces.right")
+    if torch.is_tensor(pred_hand_verts_cam):
+        pred_hand_verts_cam = pred_hand_verts_cam.detach().cpu().numpy()
+    if torch.is_tensor(pred_hand_faces):
+        pred_hand_faces = pred_hand_faces.detach().cpu().numpy()
+    if torch.is_tensor(gt_hand_verts_cam):
+        gt_hand_verts_cam = gt_hand_verts_cam.detach().cpu().numpy()
+    if torch.is_tensor(gt_hand_faces):
+        gt_hand_faces = gt_hand_faces.detach().cpu().numpy()
+
+    if pred_hand_verts_cam is not None and pred_hand_faces is not None:
+        from common.body_models import seal_mano_mesh_np
+        pred_hand_verts_cam, pred_hand_faces = seal_mano_mesh_np(
+            pred_hand_verts_cam, np.asarray(pred_hand_faces).astype(np.int64), is_rhand=True
+        )
+        pred_hand_faces = pred_hand_faces.astype(np.int32)
+    if gt_hand_verts_cam is not None and gt_hand_faces is not None:
+        from common.body_models import seal_mano_mesh_np
+        gt_hand_verts_cam, gt_hand_faces = seal_mano_mesh_np(
+            gt_hand_verts_cam, np.asarray(gt_hand_faces).astype(np.int64), is_rhand=True
+        )
+        gt_hand_faces = gt_hand_faces.astype(np.int32)
+
+    def _log_hand_meshes(frame_i: int):
+        if pred_hand_verts_cam is not None and pred_hand_faces is not None and frame_i < len(pred_hand_verts_cam):
+            hv_pred = np.asarray(pred_hand_verts_cam[frame_i], dtype=np.float32)
+            vn_pred = compute_vertex_normals(hv_pred, pred_hand_faces)
+            rr.log(
+                "world/pred_hand",
+                rr.Mesh3D(
+                    vertex_positions=hv_pred,
+                    triangle_indices=pred_hand_faces,
+                    vertex_normals=vn_pred,
+                    mesh_material=rr.Material(albedo_factor=[200, 180, 220]),
+                ),
+                static=False,
+            )
+        if gt_hand_verts_cam is not None and gt_hand_faces is not None and frame_i < len(gt_hand_verts_cam):
+            hv_gt = np.asarray(gt_hand_verts_cam[frame_i], dtype=np.float32)
+            vn_gt = compute_vertex_normals(hv_gt, gt_hand_faces)
+            rr.log(
+                "world/gt_hand",
+                rr.Mesh3D(
+                    vertex_positions=hv_gt,
+                    triangle_indices=gt_hand_faces,
+                    vertex_normals=vn_gt,
+                    mesh_material=rr.Material(albedo_factor=[200, 180, 160]),
+                ),
+                static=False,
+            )
 
     mesh_kwargs = {}
     if gt_verts_can is not None and gt_faces is not None:
@@ -332,6 +402,7 @@ def visualize_gt_and_pred_in_rerun(data_gt, pred_extrinsics, frame_indices, SAM3
                         gt_history_segs = gt_history_segs[-max_history_segs:]
                     rr.log("world/gt_camera/history",
                            rr.LineStrips3D(gt_history_segs, colors=[[0, 100, 0]]))
+            _log_hand_meshes(i)
     else:
         # Camera-centric (default): transform mesh vertices per frame and log transformed meshes.
         for i, fid in enumerate(frame_indices):
@@ -393,6 +464,7 @@ def visualize_gt_and_pred_in_rerun(data_gt, pred_extrinsics, frame_indices, SAM3
                         ),
                     )
                     rr.log(f"{gt_entity}/camera", rr.Image(img).compress(jpeg_quality=jpeg_quality))
+            _log_hand_meshes(i)
 
 
 def filter_invalid_gt_frames(data_gt, data_pred):
@@ -578,6 +650,8 @@ def load_hand_predictions(results_dir, hand_mode, frame_indices, valid_flags, de
         )
 
     hand_jnts_can = hand_out.joints.cpu().numpy()  # (N, 21, 3)
+    hand_verts_can = hand_out.vertices.cpu().numpy()  # (N, V, 3)
+    hand_faces = np.asarray(mano_layer.faces, dtype=np.int32)  # (F, 3)
 
     # Root-aligned canonical joints
     j3d_ra_right = hand_jnts_can - hand_jnts_can[:, 0:1, :]  # (N, 21, 3)
@@ -589,15 +663,19 @@ def load_hand_predictions(results_dir, hand_mode, frame_indices, valid_flags, de
     else:
         h2c_transforms = h2c_transls_np
     hand_jnts_c = transform_points(hand_jnts_can, h2c_transforms)  # (N, 21, 3)
+    hand_verts_c = transform_points(hand_verts_can, h2c_transforms)  # (N, V, 3)
     root_right = hand_jnts_c[:, 0, :]  # (N, 3)
 
     # Select valid frames
     j3d_ra_right = j3d_ra_right[valid_flags]
     root_right = root_right[valid_flags]
+    hand_verts_c = hand_verts_c[valid_flags]
 
     return {
         "j3d_ra.right": torch.from_numpy(j3d_ra_right).float(),
         "root.right": root_right.astype(np.float32),
+        "v3d_c.right": hand_verts_c.astype(np.float32),
+        "faces.right": hand_faces,
     }
 
 
@@ -616,6 +694,8 @@ def main(args):
     if hand_data is not None:
         data_pred["j3d_ra.right"] = hand_data["j3d_ra.right"]
         data_pred["root.right"] = hand_data["root.right"]
+        data_pred["v3d_c.right"] = hand_data["v3d_c.right"]
+        data_pred["faces.right"] = hand_data["faces.right"]
 
     def get_image_fids():
         return data_pred["valid_frame_indices"].tolist()
@@ -651,7 +731,7 @@ def main(args):
             data_pred["v3d_right.object"] = v3d_right_list
 
     visualize_gt_and_pred_in_rerun(
-        data_gt, aligned_pred_extrinsics, data_pred["valid_frame_indices"], SAM3D_dir,
+        data_gt, data_pred, aligned_pred_extrinsics, data_pred["valid_frame_indices"], SAM3D_dir,
         jpeg_quality=args.jpeg_quality, world_mode=args.world_mode,
         history_window=args.history_window,
     )
