@@ -201,6 +201,39 @@ def align_pred_to_gt(valid_extrinsics, gt_o2c, valid_frame_indices,
     return valid_extrinsics @ align_tf
 
 
+def compute_frustum_lines(K, H, W, c2o, depth=0.02):
+    """Compute camera frustum line segments in world (object) space.
+
+    Returns a list of (2,3) line segments: 4 edges from origin to corners
+    and 4 edges forming the image-plane rectangle.
+    """
+    K_inv = np.linalg.inv(K[:3, :3])
+    corners_px = np.array([
+        [0, 0, 1],
+        [W, 0, 1],
+        [W, H, 1],
+        [0, H, 1],
+    ], dtype=np.float64)
+    # Unproject to camera space at given depth
+    corners_cam = (K_inv @ corners_px.T).T * depth  # (4, 3)
+    origin_cam = np.zeros(3, dtype=np.float64)
+
+    # Transform to world space
+    R = c2o[:3, :3].astype(np.float64)
+    t = c2o[:3, 3].astype(np.float64)
+    origin_w = t.copy()
+    corners_w = (R @ corners_cam.T).T + t  # (4, 3)
+
+    segments = []
+    # 4 edges from origin to each corner
+    for c in corners_w:
+        segments.append(np.stack([origin_w, c]))
+    # 4 edges of the rectangle
+    for j in range(4):
+        segments.append(np.stack([corners_w[j], corners_w[(j + 1) % 4]]))
+    return segments
+
+
 def visualize_gt_and_pred_in_rerun(data_gt, pred_extrinsics, frame_indices, SAM3D_dir,
                                    jpeg_quality=85, world_mode="camera"):
     """Visualize GT and predicted poses with meshes in rerun.
@@ -271,43 +304,24 @@ def visualize_gt_and_pred_in_rerun(data_gt, pred_extrinsics, frame_indices, SAM3
             pred_c2o = np.linalg.inv(pred_extrinsics[i]).astype(np.float32)
             pred_origins.append(pred_c2o[:3, 3].copy())
             pred_entity = f"world/pred_cameras/{fid:04d}"
-            rr.log(pred_entity, rr.Transform3D(
-                translation=pred_c2o[:3, 3], mat3x3=pred_c2o[:3, :3],
-                axis_length=0.01), static=True)
             if img is not None and K_pred is not None:
                 H, W = img.shape[:2]
-                rr.log(
-                    f"{pred_entity}/camera",
-                    rr.Pinhole(
-                        resolution=[W, H],
-                        focal_length=[float(K_pred[0, 0]), float(K_pred[1, 1])],
-                        principal_point=[float(K_pred[0, 2]), float(K_pred[1, 2])],
-                        image_plane_distance=0.02,
-                    ),
-                    static=True,
-                )
-                rr.log(f"{pred_entity}/camera", rr.Image(img).compress(jpeg_quality=jpeg_quality), static=True)
+                segs = compute_frustum_lines(K_pred, H, W, pred_c2o, depth=0.02)
+                rr.log(f"{pred_entity}/frustum",
+                       rr.LineStrips3D(segs, colors=[[0, 120, 255]]),
+                       static=True)
 
             if i < len(gt_o2c) and bool(gt_is_valid[i]):
                 gt_c2o = np.linalg.inv(gt_o2c[i]).astype(np.float32)
                 gt_origins.append(gt_c2o[:3, 3].copy())
                 gt_entity = f"world/gt_cameras/{fid:04d}"
-                rr.log(gt_entity, rr.Transform3D(
-                    translation=gt_c2o[:3, 3], mat3x3=gt_c2o[:3, :3],
-                    axis_length=0.01), static=True)
                 if img is not None:
                     H, W = img.shape[:2]
-                    rr.log(
-                        f"{gt_entity}/camera",
-                        rr.Pinhole(
-                            resolution=[W, H],
-                            focal_length=[float(gt_K[0, 0]), float(gt_K[1, 1])],
-                            principal_point=[float(gt_K[0, 2]), float(gt_K[1, 2])],
-                            image_plane_distance=0.02,
-                        ),
-                        static=True,
-                    )
-                    rr.log(f"{gt_entity}/camera", rr.Image(img).compress(jpeg_quality=jpeg_quality), static=True)
+                    gt_K_i = gt_K if gt_K.ndim == 2 else gt_K[i]
+                    segs = compute_frustum_lines(gt_K_i, H, W, gt_c2o, depth=0.02)
+                    rr.log(f"{gt_entity}/frustum",
+                           rr.LineStrips3D(segs, colors=[[0, 200, 0]]),
+                           static=True)
 
         # Draw camera trajectory curves connecting consecutive camera origins.
         if len(pred_origins) >= 2:
