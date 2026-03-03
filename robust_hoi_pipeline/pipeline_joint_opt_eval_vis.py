@@ -286,58 +286,37 @@ def visualize_gt_and_pred_in_rerun(data_gt, pred_extrinsics, frame_indices, SAM3
         }
         if gt_vertex_colors is not None:
             mesh_kwargs["vertex_colors"] = gt_vertex_colors
-
     if world_mode == "object":
-        # Object-centric: mesh at identity, cameras move around it.
+        # Object-centric: mesh at identity, cameras shown frame by frame.
         if mesh_kwargs:
             rr.log("world/object/mesh", rr.Mesh3D(**mesh_kwargs), static=True)
-
-        pred_origins = []
-        gt_origins = []
-
-        # Pre-log all camera poses as static so they are all visible.
         for i, fid in enumerate(frame_indices):
+            rr.set_time_sequence("frame", i)
+
             preprocess_data = load_preprocessed_frame(data_preprocess_dir, fid)
             img = preprocess_data.get("image")
             K_pred = preprocess_data.get("intrinsics")
 
             pred_c2o = np.linalg.inv(pred_extrinsics[i]).astype(np.float32)
-            pred_origins.append(pred_c2o[:3, 3].copy())
-            pred_entity = f"world/pred_cameras/{fid:04d}"
             if img is not None and K_pred is not None:
                 H, W = img.shape[:2]
                 segs = compute_frustum_lines(K_pred, H, W, pred_c2o, depth=0.02)
-                rr.log(f"{pred_entity}/frustum",
-                       rr.LineStrips3D(segs, colors=[[0, 120, 255]]),
-                       static=True)
+                rr.log(f"world/pred_camera/frustum_{i}",
+                       rr.LineStrips3D(segs, colors=[[0, 120, 255]]), static=True)
 
             if i < len(gt_o2c) and bool(gt_is_valid[i]):
                 gt_c2o = np.linalg.inv(gt_o2c[i]).astype(np.float32)
-                gt_origins.append(gt_c2o[:3, 3].copy())
-                gt_entity = f"world/gt_cameras/{fid:04d}"
                 if img is not None:
                     H, W = img.shape[:2]
                     gt_K_i = gt_K if gt_K.ndim == 2 else gt_K[i]
                     segs = compute_frustum_lines(gt_K_i, H, W, gt_c2o, depth=0.02)
-                    rr.log(f"{gt_entity}/frustum",
-                           rr.LineStrips3D(segs, colors=[[0, 200, 0]]),
-                           static=True)
-
-        # Draw camera trajectory curves connecting consecutive camera origins.
-        if len(pred_origins) >= 2:
-            pred_pts = np.array(pred_origins, dtype=np.float32)
-            rr.log("world/pred_cameras/trajectory",
-                    rr.LineStrips3D([pred_pts], colors=[[128, 128, 128]]), static=True)
-        if len(gt_origins) >= 2:
-            gt_pts = np.array(gt_origins, dtype=np.float32)
-            rr.log("world/gt_cameras/trajectory",
-                    rr.LineStrips3D([gt_pts], colors=[[128, 128, 128]]), static=True)
+                    rr.log(f"world/gt_camera/frustum_{i}",
+                           rr.LineStrips3D(segs, colors=[[0, 200, 0]]), static=True)
     else:
         # Camera-centric (default): camera fixed, object moves per frame.
         if mesh_kwargs:
             rr.log("world/pred_camera/object/mesh", rr.Mesh3D(**mesh_kwargs), static=True)
             rr.log("world/gt_camera/object/mesh", rr.Mesh3D(**mesh_kwargs), static=True)
-
         for i, fid in enumerate(frame_indices):
             rr.set_time_sequence("frame", i)
 
