@@ -333,10 +333,7 @@ def visualize_gt_and_pred_in_rerun(data_gt, pred_extrinsics, frame_indices, SAM3
                     rr.log("world/gt_camera/history",
                            rr.LineStrips3D(gt_history_segs, colors=[[0, 100, 0]]))
     else:
-        # Camera-centric (default): camera fixed, object moves per frame.
-        if mesh_kwargs:
-            rr.log("world/pred_camera/object/mesh", rr.Mesh3D(**mesh_kwargs), static=True)
-            rr.log("world/gt_camera/object/mesh", rr.Mesh3D(**mesh_kwargs), static=True)
+        # Camera-centric (default): transform mesh vertices per frame and log transformed meshes.
         for i, fid in enumerate(frame_indices):
             rr.set_time_sequence("frame", i)
 
@@ -348,10 +345,15 @@ def visualize_gt_and_pred_in_rerun(data_gt, pred_extrinsics, frame_indices, SAM3
             pred_entity = "world/pred_camera"
             rr.log(pred_entity, rr.Transform3D(
                 translation=np.zeros_like(pred_o2c[:3, 3]), mat3x3=np.eye(3)))
-            rr.log(
-                f"{pred_entity}/object",
-                rr.Transform3D(translation=pred_o2c[:3, 3], mat3x3=pred_o2c[:3, :3]),
-            )
+            if gt_verts_can is not None and gt_faces is not None:
+                pred_verts_cam = (pred_o2c[:3, :3] @ gt_verts_can.T).T + pred_o2c[:3, 3]
+                pred_mesh_kwargs = {
+                    "vertex_positions": pred_verts_cam.astype(np.float32),
+                    "triangle_indices": gt_faces,
+                }
+                if gt_vertex_colors is not None:
+                    pred_mesh_kwargs["vertex_colors"] = gt_vertex_colors
+                rr.log("world/pred_mesh_cam", rr.Mesh3D(**pred_mesh_kwargs))
             if img is not None and K_pred is not None:
                 H, W = img.shape[:2]
                 rr.log(
@@ -370,10 +372,15 @@ def visualize_gt_and_pred_in_rerun(data_gt, pred_extrinsics, frame_indices, SAM3
                 gt_entity = "world/gt_camera"
                 rr.log(gt_entity, rr.Transform3D(
                     translation=np.zeros_like(gt_o2c_i[:3, 3]), mat3x3=np.eye(3)))
-                rr.log(
-                    f"{gt_entity}/object",
-                    rr.Transform3D(translation=gt_o2c_i[:3, 3], mat3x3=gt_o2c_i[:3, :3]),
-                )
+                if gt_verts_can is not None and gt_faces is not None:
+                    gt_verts_cam = (gt_o2c_i[:3, :3] @ gt_verts_can.T).T + gt_o2c_i[:3, 3]
+                    gt_mesh_kwargs = {
+                        "vertex_positions": gt_verts_cam.astype(np.float32),
+                        "triangle_indices": gt_faces,
+                    }
+                    if gt_vertex_colors is not None:
+                        gt_mesh_kwargs["vertex_colors"] = gt_vertex_colors
+                    rr.log("world/gt_mesh_cam", rr.Mesh3D(**gt_mesh_kwargs))
                 if img is not None:
                     H, W = img.shape[:2]
                     rr.log(
@@ -666,7 +673,7 @@ def parse_args():
                          help="JPEG quality for compressed image logging to rerun (1-100)")
     parser.add_argument("--hand_mode", type=str, default="trans",
                          help="Hand fit mode for HandDataProvider (e.g. 'rot', 'trans', 'intrinsic')")
-    parser.add_argument("--world_mode", type=str, default="object",
+    parser.add_argument("--world_mode", type=str, default="camera",
                          choices=["camera", "object"],
                          help="'camera': camera fixed, object moves. "
                               "'object': object fixed at identity, cameras move.")
