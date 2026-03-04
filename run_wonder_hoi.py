@@ -1651,14 +1651,15 @@ class run_wonder_hoi:
         self.print_header(f"hoi pipeline joint optimization eval vis for {scene_name}")
         data_dir = f"{self.dataset_dir}/{scene_name}"
         out_dir = f"{vggt_code_dir}/output/{scene_name}"
-        id = f"{self.seq_config['cond_idx']:04d}"
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_joint_opt_eval_vis.py "
+        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_joint_opt_eval_vis_nvdiffrast.py "
         cmd += f"--result_folder {out_dir}/pipeline_joint_opt/ "
         cmd += f"--out_dir {out_dir}/pipeline_joint_opt/eval/ "
         cmd += f"--SAM3D_dir {data_dir}/SAM3D_aligned_post_process "
-        cmd += f"--cond_index {self.seq_config['cond_idx']} "        
+        cmd += f"--cond_index {self.seq_config['cond_idx']} "
+        if self.rebuild:
+            cmd += f"--rebuild "
        
         print(cmd)
         os.system(cmd)       
