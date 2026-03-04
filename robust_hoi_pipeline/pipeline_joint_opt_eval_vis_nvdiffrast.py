@@ -28,6 +28,26 @@ from third_party.utils_simba.utils_simba.render import make_mesh_tensors, nvdiff
 
 
 
+def _load_gt_valid_flags(seq_name: str, frame_indices: np.ndarray):
+    import vggt.utils.gt as gt
+
+    frame_ids = [int(x) for x in np.asarray(frame_indices).tolist()]
+
+    def get_image_fids():
+        return frame_ids
+
+    data_gt = gt.load_data(seq_name, get_image_fids)
+    gt_is_valid = data_gt["is_valid"]
+    if torch.is_tensor(gt_is_valid):
+        gt_is_valid = gt_is_valid.detach().cpu().numpy()
+    gt_is_valid = np.asarray(gt_is_valid).astype(bool)
+    if len(gt_is_valid) != len(frame_ids):
+        raise RuntimeError(
+            f"GT validity length mismatch: {len(gt_is_valid)} vs {len(frame_ids)}"
+        )
+    return gt_is_valid
+
+
 def _normalize_intrinsics(K):
     K = np.asarray(K, dtype=np.float32)
     if K.shape == (3, 3):
@@ -266,6 +286,13 @@ def main(args):
     register_flags = np.asarray(image_info["register"], dtype=bool)
     invalid_flags = np.asarray(image_info["invalid"], dtype=bool)
     valid_flags = register_flags & (~invalid_flags)
+    seq_name = sam3d_dir.parent.name
+    gt_valid_flags = _load_gt_valid_flags(seq_name, frame_indices)
+    valid_flags = valid_flags & gt_valid_flags
+    print(
+        f"Using GT-valid + registered frames: {int(valid_flags.sum())}/{len(valid_flags)} "
+        f"(registered={int((register_flags & (~invalid_flags)).sum())}, gt_valid={int(gt_valid_flags.sum())})"
+    )
     c2o = np.asarray(image_info["c2o"], dtype=np.float64)
     c2o_scaled = c2o.copy()
     c2o_scaled[:, :3, 3] *= scale
@@ -290,6 +317,7 @@ def main(args):
 
     for local_idx, frame_idx in tqdm(enumerate(frame_indices), total=len(frame_indices), desc="Rendering frames with nvdiffrast"):
         if not bool(valid_flags[local_idx]):
+            print(f"[skip] frame {frame_idx}: invalid for evaluation according to GT")
             continue
 
         preprocess_data = load_preprocessed_frame(data_preprocess_dir, int(frame_idx))

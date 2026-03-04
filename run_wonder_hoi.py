@@ -95,6 +95,7 @@ class run_wonder_hoi:
                 "eval_sum_trans": self.eval_sum_trans,
                 "eval_sum_rot": self.eval_sum_rot,
                 "eval_sum": self.eval_sum,
+                "eval_sum_vis": self.eval_sum_vis,
                 "hoi_pipeline_neus_init": self.hoi_pipeline_neus_init,
                 "hoi_pipeline_data_preprocess": self.hoi_pipeline_data_preprocess,
                 "hoi_pipeline_data_preprocess_sam3d_neus": self.hoi_pipeline_data_preprocess_sam3d_neus,
@@ -1794,6 +1795,49 @@ class run_wonder_hoi:
     def eval_sum(self, scene_name, **kwargs):
         self._eval_sum(scene_name, "")        
 
+    def eval_sum_vis(self, scene_name, **kwargs):
+        self.print_header(f"eval summary vis for {scene_name}")
+
+        foundation_dir = kwargs.get(
+            "foundation_dir",
+            f"{vggt_code_dir}/output_baseline/{scene_name}/foundation_sam3d",
+        )
+        joint_opt_dir = kwargs.get(
+            "joint_opt_dir",
+            f"{vggt_code_dir}/output/{scene_name}/pipeline_joint_opt/eval",
+        )
+        gt_dir = kwargs.get(
+            "gt_dir",
+            f"{vggt_code_dir}/output_baseline/{scene_name}/gt",
+        )
+        out_dir = kwargs.get(
+            "out_dir",
+            f"{vggt_code_dir}/output/metrics_summary/{scene_name}/",
+        )
+
+        if self.rebuild:
+            cmd = f"rm -rf {out_dir}"
+            print(cmd)
+            os.system(cmd)
+
+        cmd = f"cd {vggt_code_dir} && "
+        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/eval_sum_vis.py "
+        cmd += f"--foundation_dir {foundation_dir} "
+        cmd += f"--joint_opt_dir {joint_opt_dir} "
+        cmd += f"--gt_dir {gt_dir} "
+        cmd += f"--out_dir {out_dir} "
+        if "fps" in kwargs:
+            cmd += f"--fps {kwargs['fps']} "
+        if "line_width" in kwargs:
+            cmd += f"--line_width {kwargs['line_width']} "
+        if "line_gray" in kwargs:
+            cmd += f"--line_gray {kwargs['line_gray']} "
+        if self.rebuild:
+            cmd += f"--rebuild "
+
+        print(cmd)
+        os.system(cmd)
+
     def foundation_pose_eval_vis(self, scene_name, **kwargs):
         self.print_header(f"foundation pose eval vis for {scene_name}")
         data_dir = f"{self.dataset_dir}/{scene_name}"
@@ -2101,6 +2145,7 @@ if __name__ == "__main__":
                 "eval_sum_trans",
                 "eval_sum_rot",
                 "eval_sum",
+                "eval_sum_vis",
                 "foundation_pose_eval_vis",
                 "gt_eval_vis",
                 ],
