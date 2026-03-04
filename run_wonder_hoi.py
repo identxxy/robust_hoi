@@ -120,6 +120,9 @@ class run_wonder_hoi:
                 "fit_hand_all": self.fit_hand_all,
                 "fit_hand_viewer": self.fit_hand_viewer,
             },
+            "baseline": {
+                "foundation_pose_eval_vis": self.foundation_pose_eval_vis,
+            },
         }
 
     def run(self):
@@ -1790,6 +1793,32 @@ class run_wonder_hoi:
     def eval_sum(self, scene_name, **kwargs):
         self._eval_sum(scene_name, "")        
 
+    def foundation_pose_eval_vis(self, scene_name, **kwargs):
+        self.print_header(f"foundation pose eval vis for {scene_name}")
+        data_dir = f"{self.dataset_dir}/{scene_name}"
+        cond_idx = int(self.seq_config["cond_idx"])
+
+        # Default pose folder follows third_party/FoundationPose/run.sh output layout.
+        result_folder = f"{vggt_code_dir}/third_party/FoundationPose/output/sam3d/{scene_name}"
+        out_dir = f"{vggt_code_dir}/output_baseline/{scene_name}/foundation_sam3d"
+        sam3d_dir = f"{data_dir}/SAM3D"
+
+        if self.rebuild:
+            cmd = f"rm -rf {out_dir}"
+            print(cmd)
+            os.system(cmd)
+
+        cmd = f"cd {vggt_code_dir} && "
+        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python third_party/FoundationPose/eval_vis_nvdiffrast.py "
+        cmd += f"--result_folder {result_folder} "
+        cmd += f"--data_dir {data_dir} "
+        cmd += f"--sam3d_dir {sam3d_dir} "
+        cmd += f"--out_dir {out_dir} "
+        cmd += f"--cond_index {cond_idx} "
+
+        print(cmd)
+        os.system(cmd)
+
 def main(args, extras):
     # Convert extras list to dictionary
     extras_dict = {}
@@ -1957,7 +1986,8 @@ if __name__ == "__main__":
                 "data_convert",
                 "obj_process",
                 "hand_pose_preprocess",
-                "hand_pose_postprocess",           
+                "hand_pose_postprocess",
+                "baseline",
                 ], 
         help="Specify the execution option.", 
         nargs='+',  # To accept multiple values in a list
@@ -2039,7 +2069,8 @@ if __name__ == "__main__":
                 "eval_sum_intrinsic",
                 "eval_sum_trans",
                 "eval_sum_rot",
-                "eval_sum"
+                "eval_sum",
+                "foundation_pose_eval_vis",
                 ],
         help="Specify the process option.", 
         nargs='+',  # To accept multiple values in a list
