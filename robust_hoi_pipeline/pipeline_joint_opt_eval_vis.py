@@ -104,6 +104,49 @@ def build_mesh_object_predictions(
     }
 
 
+def load_object_mesh_from_sam3d(
+    SAM3D_dir: Path,
+    cond_index: int,
+    frame_indices_full: np.ndarray,
+    c2o_full: np.ndarray,
+    scale: float,
+    sam3d_to_cond_cam: np.ndarray,
+):
+    """Load mesh from SAM3D directory and convert canonical vertices to object space."""
+    # Match pipeline_joint_opt_eval.py preference.
+    mesh_candidates = [
+        SAM3D_dir.parent / "SAM3D" / f"{cond_index:04d}" / "scene.glb",
+        SAM3D_dir / f"{cond_index:04d}" / "mesh.obj",
+        SAM3D_dir / f"{cond_index:04d}" / "scene.glb",
+    ]
+    mesh_path = next((p for p in mesh_candidates if p.exists()), None)
+    if mesh_path is None:
+        return None, None, None
+
+    mesh = load_mesh_as_trimesh(mesh_path)
+    if mesh is None:
+        return None, None, None
+
+    frame_list = frame_indices_full.tolist() if isinstance(frame_indices_full, np.ndarray) else list(frame_indices_full)
+    if cond_index not in frame_list:
+        return None, None, None
+
+    verts_obj = mesh.vertices * scale
+    faces = np.asarray(mesh.faces, dtype=np.uint32)
+
+    vertex_colors = None
+    if hasattr(mesh, "visual") and hasattr(mesh.visual, "vertex_colors"):
+        vc = np.asarray(mesh.visual.vertex_colors)
+        if vc.ndim == 2 and vc.shape[0] == len(verts_obj) and vc.shape[1] >= 3:
+            vertex_colors = vc[:, :3].astype(np.uint8)
+    elif hasattr(mesh, "visual") and hasattr(mesh.visual, "to_color") and callable(mesh.visual.to_color):
+        vc = np.asarray(mesh.visual.to_color().vertex_colors)
+        if vc.ndim == 2 and vc.shape[0] == len(verts_obj) and vc.shape[1] >= 3:
+            vertex_colors = vc[:, :3].astype(np.uint8)
+
+    return verts_obj, faces, vertex_colors
+
+
 def find_joint_opt_mesh_from_ckpt(joint_opt_ckpt: Path):
     """Find an exported NeuS mesh near the fixed checkpoint path."""
     if not joint_opt_ckpt.exists():
@@ -181,7 +224,7 @@ def visualize_in_rerun(extrinsics, frame_indices, valid_flags, SAM3D_dir, cond_i
 
 
 
-def align_pred_to_gt(valid_extrinsics, gt_o2c, valid_frame_indices,
+def align_pred_to_gt(pred_o2c, gt_o2c, valid_frame_indices,
                      cond_index, register_indices):
     """Align predicted extrinsics to GT object space using a shared anchor frame.
 
@@ -213,8 +256,8 @@ def align_pred_to_gt(valid_extrinsics, gt_o2c, valid_frame_indices,
             raise ValueError(
                 "No registered frame found in valid_frame_indices for alignment")
     # anchor_idx = 0 # hardcode to use the first valid frame as anchor
-    align_tf = np.linalg.inv(valid_extrinsics[anchor_idx]) @ gt_o2c[anchor_idx]
-    return valid_extrinsics @ align_tf
+    align_tf = np.linalg.inv(pred_o2c[anchor_idx]) @ gt_o2c[anchor_idx]
+    return pred_o2c @ align_tf
 
 
 def compute_frustum_lines(K, H, W, c2o, depth=0.02):
@@ -250,7 +293,17 @@ def compute_frustum_lines(K, H, W, c2o, depth=0.02):
     return segments
 
 
-def visualize_gt_and_pred_in_rerun(data_gt, data_pred, pred_extrinsics, frame_indices, SAM3D_dir,
+def visualize_gt_and_pred_in_rerun(
+    data_gt,
+    data_pred,
+    pred_extrinsics,
+    frame_indices,
+    SAM3D_dir,
+    cond_index,
+    frame_indices_full,
+    c2o_full,
+    scale,
+    sam3d_to_cond_cam,
                                    jpeg_quality=85, world_mode="camera", history_window=50):
     """Visualize GT and predicted poses with meshes in rerun.
 
@@ -293,6 +346,9 @@ def visualize_gt_and_pred_in_rerun(data_gt, data_pred, pred_extrinsics, frame_in
     gt_is_valid = data_gt["is_valid"].numpy() if torch.is_tensor(data_gt["is_valid"]) else np.array(data_gt["is_valid"])
     gt_K = data_gt["K"].numpy() if torch.is_tensor(data_gt["K"]) else np.array(data_gt["K"])
     data_preprocess_dir = SAM3D_dir.parent / "pipeline_preprocess"
+
+    pred_verts, pred_faces, pred_colors = load_object_mesh_from_sam3d(SAM3D_dir, cond_index, frame_indices_full, c2o_full, scale, sam3d_to_cond_cam)
+    # TODO: need algin the object mesh from SAM3D to GT canonical space before visualization if they are not aligned.
 
     # Hand mesh payloads in camera space.
     pred_hand_verts_cam = data_pred.get("v3d_c.right")
@@ -706,12 +762,12 @@ def main(args):
     data_gt, data_pred = filter_invalid_gt_frames(data_gt, data_pred)
 
     gt_o2c_all = data_gt["o2c"].numpy() if torch.is_tensor(data_gt["o2c"]) else np.array(data_gt["o2c"])
-    aligned_pred_extrinsics = align_pred_to_gt(
+    aligned_pred_o2c = align_pred_to_gt(
         data_pred["extrinsics"], gt_o2c_all, data_pred["valid_frame_indices"],
         args.cond_index, register_indices,
     )
 
-    data_pred["extrinsics"] = aligned_pred_extrinsics
+    data_pred["extrinsics"] = aligned_pred_o2c
 
     # Compute v3d_right.object (object verts relative to hand root) if hand data available
     if "root.right" in data_pred:
@@ -722,8 +778,8 @@ def main(args):
             if torch.is_tensor(root_right):
                 root_right = root_right.numpy()
             v3d_right_list = []
-            for i in range(len(aligned_pred_extrinsics)):
-                o2c_i = aligned_pred_extrinsics[i]
+            for i in range(len(aligned_pred_o2c)):
+                o2c_i = aligned_pred_o2c[i]
                 v_can_i = v3d_can_np[0] if v3d_can_np.ndim == 3 else v3d_can_np
                 v_cam = (o2c_i[:3, :3] @ v_can_i.T).T + o2c_i[:3, 3]
                 v_right = v_cam - root_right[i]
@@ -731,7 +787,12 @@ def main(args):
             data_pred["v3d_right.object"] = v3d_right_list
 
     visualize_gt_and_pred_in_rerun(
-        data_gt, data_pred, aligned_pred_extrinsics, data_pred["valid_frame_indices"], SAM3D_dir,
+        data_gt, data_pred, aligned_pred_o2c, data_pred["valid_frame_indices"], SAM3D_dir,
+        cond_index=args.cond_index,
+        frame_indices_full=frame_indices,
+        c2o_full=c2o_pred,
+        scale=scale,
+        sam3d_to_cond_cam=sam3d_to_cond_cam,
         jpeg_quality=args.jpeg_quality, world_mode=args.world_mode,
         history_window=args.history_window,
     )
