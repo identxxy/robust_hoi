@@ -12,7 +12,7 @@ conda activate threestudio
 seq_list="MC1"
 ## data process.
 python run_wonder_hoi.py --execute_list data_read --process_list realsense_read_data ZED_read_data --seq_list $seq_list --rebuild
-python run_wonder_hoi.py --execute_list data_convert --process_list ZED_parse_data convert_depth_to_ply get_depth_from_foundation_stereo --seq_list $seq_list
+python run_wonder_hoi.py --execute_list data_convert --process_list ZED_parse_data convert_zed_depth_to_ply get_depth_from_foundation_stereo --seq_list $seq_list
 
 ## object process. Note: Run in the doccker container with the conda env py38
 python run_wonder_hoi.py --execute_list obj_process --process_list obj_3D_gen --seq_list $seq_list --rebuild

@@ -40,7 +40,7 @@ class run_wonder_hoi:
             },
             "data_convert": {
                 "ZED_parse_data": self.ZED_parse_data,
-                "convert_depth_to_ply": self.convert_depth_to_ply,
+                "convert_zed_depth_to_ply": self.convert_zed_depth_to_ply,
                 "get_depth_from_foundation_stereo": self.get_depth_from_foundation_stereo,
                 "hot3d_cp_images": self.hot3d_cp_images,
                 "hot3d_gen_meta": self.hot3d_gen_meta,
@@ -1097,17 +1097,18 @@ class run_wonder_hoi:
         print(cmd)
         os.system(cmd)
 
-    def convert_depth_to_ply(self, scene_name, **kwargs):
+    def convert_zed_depth_to_ply(self, scene_name, **kwargs):
         #iterate over all scene_name in dataset_dir
         self.print_header(f"convert depth to ply for {scene_name}")
         if self.rebuild:
-            cmd = f"cd {self.dataset_dir}/{scene_name} && rm -rf ply_fs"
+            cmd = f"cd {self.dataset_dir}/{scene_name} && rm -rf ply_zed"
             print(cmd)
             os.system(cmd)
 
-        cmd = f"cd {home_dir}/Documents/project/MonoGS && " \
-            f"{self.conda_dir}/envs/py38cu116_GS_ICP/bin/python " \
-            f"realsense_get_ply.py --input_dir {self.dataset_dir}/{scene_name}"
+        cmd = f"cd {vggt_code_dir} && " \
+            f"{self.conda_dir}/envs/vggsfm_tmp/bin/python depth_to_ply.py " \
+            f"--input_dir {self.dataset_dir}/{scene_name} " \
+            f"--ply_interval 10 --use_rgb"
         print(cmd)
         os.system(cmd)
 
@@ -1957,7 +1958,7 @@ if __name__ == "__main__":
                 "realsense_convert_data", 
                 "ZED_read_data",
                 "ZED_parse_data",
-                "convert_depth_to_ply",
+                "convert_zed_depth_to_ply",
                 "get_depth_from_foundation_stereo",
                 "estimate_hand_pose",
                 "estimate_obj_pose",
