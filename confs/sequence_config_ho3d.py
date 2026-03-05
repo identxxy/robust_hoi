@@ -1,3 +1,24 @@
+sequence_name_list = [
+    "ABF12",
+    "ABF14",
+    "GPMF12",
+    "GPMF14",    
+    "MC1",
+    "MC4",
+    "MDF12",
+    "MDF14",
+    "ShSu10",
+    "ShSu14",
+    "SM2",
+    "SM4",
+    "SMu1",
+    "SMu40",
+    "BB12",
+    "BB13", 
+    "GSF12",
+    "GSF13",       
+]
+
 sequences = {
     # {
     # # reconstruction fail after increase matching scores to 0.5 from 0.3 and retrival image number to top 50%

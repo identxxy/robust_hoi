@@ -1,3 +1,14 @@
+sequence_name_list = [
+    ###### in-the-wild captured by ZED ##########
+    "CUB1",
+    "CUB2",
+    "DUC1",
+    "DUC2",
+    "TC3",
+    "TC4",
+    "WC3",
+    "WC4", 
+]
 sequences = {
     # {
     # # reconstruction fail after increase matching scores to 0.5 from 0.3 and retrival image number to top 50%
@@ -18,7 +29,7 @@ sequences = {
     "cond_select_strategy": "manual", # manual or object_hand_ratio    
     "frame_star": 0,
     "frame_end": 9999,
-    "frame_interval": 5,
+    "frame_interval": 1,
     "frame_number": 1000,   
     "obj_num": 6,
     "obj_1_cond_idx": 0,
@@ -26,81 +37,6 @@ sequences = {
     "obj_3_cond_idx": 0,
     "obj_4_cond_idx": 0,    
     },
-        
-                    
-    ########## HO3D Sequences ##########
-    "ABF12":
-        {
-        "cond_idx": 120,
-        },     
-    "ABF14":
-        {
-        "cond_idx": 0,
-        },
-    "GPMF12":
-        {
-        "cond_idx": 239,
-        }, 
-    "GPMF14":
-        {
-        "cond_idx": 1060,
-        },
-    "MC1":
-        {
-        "cond_idx": 487,
-        }, 
-    "MC4":
-        {
-        "cond_idx": 155,
-        },
-    "MDF12":
-        {
-        "cond_idx": 1485,
-        }, 
-    "MDF14":
-        {
-        "cond_idx": 605,
-        },         
-    "ShSu10":
-        {
-        "cond_idx": 518,
-        },  
-    "ShSu14":
-        {
-        "cond_idx": 870,
-        },          
-    "SM2":
-        {
-        "cond_idx": 18,
-        },
-    "SM4":
-        {
-        "cond_idx": 0,
-        },          
-     "SMu1":
-        {
-        "cond_idx": 1738,
-        }, 
-    "SMu40":
-        {
-        "cond_idx": 400,
-        },
-    "BB12":
-        {
-        "cond_idx": 770,
-        },
-    "BB13":
-        {
-        "cond_idx": 1024,
-        },                                      
-    "GSF12":
-        {
-        "cond_idx": 385,
-        },
-    "GSF13":
-        {
-        "cond_idx": 755,
-        },        
-                                            
+                                                 
 }
 
