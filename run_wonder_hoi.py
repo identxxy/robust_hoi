@@ -7,7 +7,7 @@ import random
 import numpy as np
 from PIL import Image
 
-from confs.sequence_config import sequences, vggt_code_dir, home_dir, conda_dir
+from confs.sequence_config import sequences, sequence_name_list, vggt_code_dir, home_dir, conda_dir, dataset_dir
 
 
 class run_wonder_hoi:
@@ -1929,128 +1929,6 @@ def main(args, extras):
     run_wonder_hoi(args, extras_dict).run()
 
 if __name__ == "__main__":
-    all_sequences = [
-        # ###### ZED dataset ##########
-        # "air_gun",
-        # "clamp",
-        # "cooking_shovel",
-        # "cube",
-        # "cup1",
-        # "cup2",
-        # "duck",
-        # "fire_fighting_car",
-        # "glass_cup",
-        # "hammer",
-        # "jep_car",
-        # "lufei",
-        # "mouse",
-        # "pitch",
-        # "plane",
-        # "scisors",
-        # "scisors_1",
-        # "spoon",
-        # "sprayer",
-        # "wrench",
-        # ###### ZED dataset ##########
-        # "air_gun",
-        # "clamp",
-        # "cooking_shovel",
-        # "cube",
-        # "cup1",
-        # "cup2",
-        # "duck",
-        # "fire_fighting_car",
-        # "glass_cup",
-        # "hammer",
-        # "jep_car",
-        # "lufei",
-        # "mouse",
-        # "pitch",
-        # "plane",
-        # "scisors",
-        # "scisors_1",
-        # "spoon",
-        # "sprayer",
-        # "wrench",
-        # "bottle1",
-        # "bottle2",
-        # "drug_box",
-        # "trans_bottle1" 
-        
-        
-
-        ###### hot3d ##########
-        # "P0003_c701bd11",
-
-        ###### in-the-wild captured by ZED ##########
-        "CUB1",
-        "CUB2",
-        "DUC1",
-        "DUC2",
-        "TC3",
-        "TC4",
-        "WC3",
-        "WC4",
-
-              
-
-        # ###### ho3d full ##########
-        # "ABF10",
-        # "ABF11",
-        # "ABF12",
-        # "ABF13",
-        # "ABF14",
-        # "BB10",
-        # "BB11",
-        # "BB12",
-        # "BB13",
-        # "BB14",     
-        # "GPMF10",
-        # "GPMF11",
-        # "GPMF12",
-        # "GPMF13",
-        # "GPMF14",   
-        # "GSF10",
-        # "GSF11",
-        # "GSF12",
-        # "GSF13",
-        # "GSF14",
-        # "MC1",
-        # "MC2",
-        # "MC4",
-        # "MC5",
-        # "MC6",
-        # "MDF10",
-        # "MDF11",
-        # "MDF12",
-        # "MDF13",
-        # "MDF14",     
-        # "ND2",  
-        # "SB10",
-        # "SB12",
-        # "SB14",
-        # "ShSu10",
-        # "ShSu12",
-        # "ShSu13",
-        # "ShSu14",
-        # "SiBF10",
-        # "SiBF11",
-        # "SiBF12",
-        # "SiBF13",
-        # "SiBF14",
-        # "SiS1",
-        # "SM2",
-        # "SM3",
-        # "SM4",
-        # "SM5",
-        # "SMu1",
-        # "SMu40",
-        # "SMu41",
-        # "SMu42",
-        # "SS1",
-        # "SS2",
-        # "SS3",        
-    ]
 
     parser = argparse.ArgumentParser()
 
@@ -2162,13 +2040,12 @@ if __name__ == "__main__":
     parser.add_argument('--rebuild', action='store_true', help='Rebuild the process')
     parser.add_argument('--vis', action='store_true', help='Visualize the process')
     parser.add_argument('--eval', action='store_true', help='Evaluate the process')
-    parser.add_argument('--dataset_dir', type=str, default=f"{home_dir}/Documents/dataset/BundleSDF/HO3D_v3/train/", help='Dataset directory')
     parser.add_argument('--reconstruction_dir', type=str, default=f"{home_dir}/Documents/project/WonderHOI/code/output_backup/[115][472254d][disable_global_ba]", help='Reconstruction folder')
     parser.add_argument('--conda_type', type=str, default=None, help='Conda environment type: anaconda3 or miniconda3')
 
     args, extras = parser.parse_known_args()
     
     if 'all' in args.seq_list:
-        args.seq_list = all_sequences
+        args.seq_list = sequence_name_list
 
     main(args, extras)
