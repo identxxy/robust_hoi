@@ -286,13 +286,20 @@ def main(args):
     register_flags = np.asarray(image_info["register"], dtype=bool)
     invalid_flags = np.asarray(image_info["invalid"], dtype=bool)
     valid_flags = register_flags & (~invalid_flags)
-    seq_name = sam3d_dir.parent.name
-    gt_valid_flags = _load_gt_valid_flags(seq_name, frame_indices)
-    valid_flags = valid_flags & gt_valid_flags
-    print(
-        f"Using GT-valid + registered frames: {int(valid_flags.sum())}/{len(valid_flags)} "
-        f"(registered={int((register_flags & (~invalid_flags)).sum())}, gt_valid={int(gt_valid_flags.sum())})"
-    )
+    gt_valid_flags = None
+    if bool(args.vis_gt):
+        seq_name = sam3d_dir.parent.name
+        gt_valid_flags = _load_gt_valid_flags(seq_name, frame_indices)
+        valid_flags = valid_flags & gt_valid_flags
+        print(
+            f"Using GT-valid + registered frames: {int(valid_flags.sum())}/{len(valid_flags)} "
+            f"(registered={int((register_flags & (~invalid_flags)).sum())}, gt_valid={int(gt_valid_flags.sum())})"
+        )
+    else:
+        print(
+            f"Using registered frames only: {int(valid_flags.sum())}/{len(valid_flags)} "
+            f"(GT filtering disabled)"
+        )
     c2o = np.asarray(image_info["c2o"], dtype=np.float64)
     c2o_scaled = c2o.copy()
     c2o_scaled[:, :3, 3] *= scale
@@ -317,7 +324,10 @@ def main(args):
 
     for local_idx, frame_idx in tqdm(enumerate(frame_indices), total=len(frame_indices), desc="Rendering frames with nvdiffrast"):
         if not bool(valid_flags[local_idx]):
-            print(f"[skip] frame {frame_idx}: invalid for evaluation according to GT")
+            if gt_valid_flags is not None:
+                print(f"[skip] frame {frame_idx}: invalid for evaluation according to GT")
+            else:
+                print(f"[skip] frame {frame_idx}: unregistered/invalid")
             continue
 
         preprocess_data = load_preprocessed_frame(data_preprocess_dir, int(frame_idx))
@@ -385,6 +395,7 @@ def parse_args():
     parser.add_argument("--out_dir", type=str, required=True, help="Output directory for visualization")
     parser.add_argument("--fps", type=int, default=6, help="Output video FPS")
     parser.add_argument("--alpha", type=float, default=0.8, help="Overlay weight for rendered normals")
+    parser.add_argument("--vis_gt", type=int, default=1, help="Use GT-valid filtering (1) or not (0)")
     parser.add_argument(
         "--render_hand",
         action="store_true",

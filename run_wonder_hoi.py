@@ -1655,6 +1655,8 @@ class run_wonder_hoi:
             cmd += f"--data_dir {data_dir} "
             cmd += f"--output_dir {out_dir} "
             cmd += f"--cond_index {self.seq_config['cond_idx']} "
+            if dataset_type != "ho3d":
+                cmd += f"--vis_gt 0 "
             print(cmd)
             os.system(cmd)
             return
@@ -1700,6 +1702,8 @@ class run_wonder_hoi:
             cmd += f"--render_hand "
         if self.rebuild:
             cmd += f"--rebuild "
+        if dataset_type != "ho3d":
+            cmd += f"--vis_gt 0 "
        
         print(cmd)
         os.system(cmd)       
