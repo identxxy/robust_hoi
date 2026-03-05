@@ -322,11 +322,12 @@ class run_wonder_hoi:
             os.system(cmd)
         
         
-        cmd = f"cd {home_dir}/Documents/project/sam3/ && "
+        cmd = f"cd {vggt_code_dir}/third_party/sam3/ && "
         cmd += f"{self.conda_dir}/envs/sam3/bin/python run_HO3D_video.py "
         cmd += f"--video_path {data_dir} "
         cmd += f"--out_path {out_mask_dir} "
         cmd += f"--text_prompt '{text_prompt}' "
+        # cmd += f"--check_mask_result "
         # cmd += f"--use_both_text_and_point_prompt "
         print(cmd)
         os.system(cmd)
@@ -358,7 +359,7 @@ class run_wonder_hoi:
             "SiS": "yellow sugar box",         
         }
 
-        prompt_text_str = obj2text_prompt[obj_name]
+        prompt_text_str = obj2text_prompt.get(obj_name, None)
 
         if self.rebuild:
             cmd = f"rm -rf {out_mask_dir}"
@@ -366,7 +367,7 @@ class run_wonder_hoi:
             os.system(cmd)
         
         
-        cmd = f"cd {home_dir}/Documents/project/sam3/ && "
+        cmd = f"cd {vggt_code_dir}/third_party/sam3/ && "
         cmd += f"{self.conda_dir}/envs/sam3/bin/python run_HO3D_video.py "
         cmd += f"--video_path {data_dir} "
         cmd += f"--out_path {out_mask_dir} "
