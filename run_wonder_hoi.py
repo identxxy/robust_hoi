@@ -7,7 +7,7 @@ import random
 import numpy as np
 from PIL import Image
 
-from confs.sequence_config import sequences, sequence_name_list, vggt_code_dir, home_dir, conda_dir, dataset_dir
+from confs.sequence_config import sequences, sequence_name_list, dataset_type, vggt_code_dir, home_dir, conda_dir, dataset_dir
 
 
 class run_wonder_hoi:
@@ -536,8 +536,8 @@ class run_wonder_hoi:
         ]
         if "num_frames" in kwargs:
             cmd_parts.append(f"--num_frames {kwargs['num_frames']}")
-        if "dataset_type" in kwargs:
-            cmd_parts.append(f"--dataset_type {kwargs['dataset_type']}")
+
+        cmd_parts.append(f"--dataset_type {dataset_type}")
 
         cmd = " ".join(cmd_parts)
         print(cmd)
@@ -1329,7 +1329,7 @@ class run_wonder_hoi:
         cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python demo_colmap.py "
         cmd += f"--scene_dir {data_dir} "
         cmd += f"--max_query_pts 200 --query_frame_num 0 --vis_thresh 0.40 --max_reproj_error 3 --shared_camera "
-        cmd += f"--output_dir {out_dir} --use_calibrated_intrinsic --max_frame_num 100 --frame_interval 1 --dataset_type ZED"
+        cmd += f"--output_dir {out_dir} --use_calibrated_intrinsic --max_frame_num 100 --frame_interval 1 --dataset_type {dataset_type}"
         print(cmd)
         os.system(cmd)
 
@@ -1361,7 +1361,7 @@ class run_wonder_hoi:
         cmd = f"cd {vggt_code_dir} && "
         cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi.py "
         cmd += f"--scene_dir {data_dir} "
-        cmd += f"--max_frame_num {frame_number * frame_interval -1} --frame_interval {frame_interval} --dataset_type HO3D "
+        cmd += f"--max_frame_num {frame_number * frame_interval -1} --frame_interval {frame_interval} --dataset_type {dataset_type} "
         cmd += f"--output_dir {out_dir} "
         cmd += f"--cond_index {int(self.seq_config['cond_idx'] / self.seq_config['frame_interval'])} "
         cmd += f"--cond_index_raw {int(self.seq_config['cond_idx'])} "
