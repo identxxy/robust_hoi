@@ -328,7 +328,7 @@ class run_wonder_hoi:
         cmd += f"--video_path {data_dir} "
         cmd += f"--out_path {out_mask_dir} "
         cmd += f"--text_prompt '{text_prompt}' "
-        # cmd += f"--check_mask_result "
+        cmd += f"--check_mask_result 1 "
         # cmd += f"--use_both_text_and_point_prompt "
         print(cmd)
         os.system(cmd)
