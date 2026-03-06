@@ -1138,13 +1138,13 @@ class run_wonder_hoi:
             print(cmd)
             os.system(cmd)
 
-        interval = int(kwargs.get("interval", 3))
+        downsample = int(kwargs.get("downsample", 3))
         cmd = f"cd {vggt_code_dir}/third_party/zed-sdk/recording/export/svo/python && "
         cmd += f"LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6 {self.conda_dir}/bin/python3 svo_export.py "
         cmd += f"--mode 2 "
         cmd += f" --input_svo_file {self.dataset_dir}/{scene_name}/{scene_name}.svo2 "
         cmd += f"--output_path_dir {scene_dir}/ "
-        cmd += f"--interval {interval} "
+        cmd += f"--interval {downsample} "
         cmd += f"--resize_width 1.0 "
         cmd += f"--resize_height 1.0 "
         cmd += f"--crop_width 960 "
