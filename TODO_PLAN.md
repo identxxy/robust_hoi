@@ -52,6 +52,7 @@ Host 3090_server1
 - [x] rsync zed dataset /home/simba/Documents/dataset/ZED_wenxuan/ to 3090_server1://data1/shibo/Documents/dataset
 - [x] rsync `third_party/FoundationStereo/pretrained_models/model_best_bp2.pth` to 3090_server1:/data1/shibo/Documents/project/vggt_wenxuan_new/third_party/FoundationStereo/pretrained_models
 - [x] in robust_hoi_pipeline/pipeline_joint_opt.py/_rectify_pose(), optimize the pose with second-order gradient refinement
+- [x] in third_party/bundlesdf/eval_vis_nvdiffrast.py, for each sequence read the mesh file textured_mesh.obj in output directory, camera pose from output/ob_in_cam, rgb image, intrinsic from the data directory then rendering a normal image by nvdiffrast_render and overlay the normal to the image as in third_party/FoundationPose/eval_vis_nvdiffrast.py. And add a vis_git to filter the invalid frames as in third_party/FoundationPose/eval_vis_nvdiffrast.py. third_party/FoundationPose/eval_vis_nvdiffrast.py, third_party/bundlesdf/eval_vis_nvdiffrast.py and robust_hoi_pipeline/pipeline_joint_opt_eval_vis_nvdiffrast.py should use the same code framework and abstract the same function to utils_simba/eval_vis.py. The only difference between these three files is the data reader.
 
 #### Tasks
 - [x] list model/checkpoint files under /home/simba/Documents/project/vggt/third_party

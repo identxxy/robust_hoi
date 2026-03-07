@@ -124,6 +124,7 @@ class run_wonder_hoi:
             },
             "baseline": {
                 "foundation_pose_eval_vis": self.foundation_pose_eval_vis,
+                "bundle_sdf_eval_vis": self.bundle_sdf_eval_vis,
                 "gt_eval_vis": self.gt_eval_vis,
             },
         }
@@ -1896,6 +1897,36 @@ class run_wonder_hoi:
         cmd += f"--sam3d_dir {sam3d_dir} "
         cmd += f"--out_dir {out_dir} "
         cmd += f"--cond_index {cond_idx} "
+        if dataset_type != "ho3d":
+            cmd += f"--vis_gt 0 "        
+
+        print(cmd)
+        os.system(cmd)
+
+    def bundle_sdf_eval_vis(self, scene_name, **kwargs):
+        self.print_header(f"bundle sdf eval vis for {scene_name}")
+
+        output_root = kwargs.get("output_root", f"{vggt_code_dir}/third_party/bundlesdf/output")
+        data_root = kwargs.get("data_root", self.dataset_dir)
+        vis_root = kwargs.get("vis_root", f"{vggt_code_dir}/output_baseline/{scene_name}/bundle_sdf/")
+        alpha = kwargs.get("alpha", 0.8)
+        fps = kwargs.get("fps", 6)
+
+        if self.rebuild:
+            cmd = f"rm -rf {vis_root}"
+            print(cmd)
+            os.system(cmd)
+
+        cmd = f"cd {vggt_code_dir} && "
+        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python third_party/bundlesdf/eval_vis_nvdiffrast.py "
+        cmd += f"--seq_list {scene_name} "
+        cmd += f"--output_root {output_root} "
+        cmd += f"--data_root {data_root} "
+        cmd += f"--vis_root {vis_root} "
+        cmd += f"--fps {fps} "
+        cmd += f"--alpha {alpha} "
+        if dataset_type != "ho3d":
+            cmd += f"--vis_gt 0 "
 
         print(cmd)
         os.system(cmd)
@@ -2053,6 +2084,7 @@ if __name__ == "__main__":
                 "eval_sum",
                 "eval_sum_vis",
                 "foundation_pose_eval_vis",
+                "bundle_sdf_eval_vis",
                 "gt_eval_vis",
                 ],
         help="Specify the process option.", 
