@@ -67,3 +67,14 @@ Host 3090_server1
 #### Notes
 - Wins: all planned rsync and verification items completed, including model checkpoint sync to `vggt_wenxuan_new`.
 - Plan for tomorrow: run/validate the next pipeline stage on `3090_server1` with the synced assets.
+
+### 2026-03-06
+
+#### Top Priorities
+- [x] for each seqence in /home/simba/Documents/project/vggt/third_party/bundlesdf/output, rsync the mesh_cleaned.obj and ob_in_cam to /home/simba/Documents/project/vggt/third_party/bundlesdf/output_ho3d
+- [x] in robust_hoi_pipeline/eval_sum_vis.py, add the normal overlay video geneated by third_party/bundlesdf/eval_vis_nvdiffrast.py to the merged video
+- [x] for each seqence in /home/simba/Documents/project/vggt/third_party/bundlesdf/output, rsync the textured_mesh.obj to /home/simba/Documents/project/vggt/third_party/bundlesdf/output_ho3d
+- [x] in robust_hoi_pipeline/eval_sum_vis.py, add the method name to the merged video
+- [x] in robust_hoi_pipeline/eval_sum_vis.py, add args.vis_method_name to determin whether to visulize the method_name. Visulize the method name by default.
+- [x] rsync 3090_server1:/data1/shibo/Documents/project/hold/code/logs to third_party/hold/output_ho3d.
+- [x] create a new file third_party/hold/eval_vis_nvdiffrast.py. In third_party/hold/eval_vis_nvdiffrast.py for each sequence read object mesh file and camera pose from output_ho3d, rgb image, intrinsic from the data directory then rendering a normal image by nvdiffrast_render and overlay the normal to the image as in third_party/FoundationPose/eval_vis_nvdiffrast.py. And add a vis_git to filter the invalid frames as in third_party/FoundationPose/eval_vis_nvdiffrast.py. third_party/hold/eval_vis_nvdiffrast.py shold call the commmon function from utils_simba/eval_vis.py.
