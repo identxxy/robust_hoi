@@ -125,6 +125,7 @@ class run_wonder_hoi:
             "baseline": {
                 "foundation_pose_eval_vis": self.foundation_pose_eval_vis,
                 "bundle_sdf_eval_vis": self.bundle_sdf_eval_vis,
+                "hold_eval_vis": self.hold_eval_vis,
                 "gt_eval_vis": self.gt_eval_vis,
             },
         }
@@ -1939,6 +1940,35 @@ class run_wonder_hoi:
         print(cmd)
         os.system(cmd)
 
+    def hold_eval_vis(self, scene_name, **kwargs):
+        self.print_header(f"hold eval vis for {scene_name}")
+
+        output_root = kwargs.get("output_root", f"{vggt_code_dir}/third_party/hold/code/logs_ho3d")
+        data_root = kwargs.get("data_root", f"{vggt_code_dir}/third_party/hold/code/data_ho3d")
+        vis_root = kwargs.get("vis_root", f"{vggt_code_dir}/output_baseline/{scene_name}/hold/")
+        alpha = kwargs.get("alpha", 0.8)
+        fps = kwargs.get("fps", 6)
+
+        if self.rebuild:
+            cmd = f"rm -rf {vis_root}"
+            print(cmd)
+            os.system(cmd)
+
+        cmd = f"cd {vggt_code_dir} && "
+        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python third_party/hold/code/eval_vis_nvdiffrast.py "
+        cmd += f"--seq_list {scene_name} "
+        cmd += f"--output_root {output_root} "
+        cmd += f"--data_root {data_root} "
+        cmd += f"--vis_root {vis_root} "
+        cmd += f"--fps {fps} "
+        cmd += f"--alpha {alpha} "
+        cmd += f"--vis_gt 0 "
+        # if dataset_type != "ho3d":
+        #     cmd += f"--vis_gt 0 "
+
+        print(cmd)
+        os.system(cmd)
+
     def gt_eval_vis(self, scene_name, **kwargs):
         self.print_header(f"gt eval vis for {scene_name}")
         data_dir = f"{self.dataset_dir}/{scene_name}"
@@ -2093,6 +2123,7 @@ if __name__ == "__main__":
                 "eval_sum_vis",
                 "foundation_pose_eval_vis",
                 "bundle_sdf_eval_vis",
+                "hold_eval_vis",
                 "gt_eval_vis",
                 ],
         help="Specify the process option.", 

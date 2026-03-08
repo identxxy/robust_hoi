@@ -24,18 +24,18 @@ Host 3090_server1
 ### YYYY-MM-DD
 
 #### Top Priorities
-- [ ] Priority 1
-- [ ] Priority 2
-- [ ] Priority 3
+- Priority 1
+- Priority 2
+- Priority 3
 
 #### Tasks
-- [ ] Task A
-- [ ] Task B
-- [ ] Task C
+- Task A
+- Task B
+- Task C
 
 #### Follow-ups / Blockers
-- [ ] Follow-up 1
-- [ ] Blocker 1
+- Follow-up 1
+- Blocker 1
 
 #### Notes
 - Wins:
@@ -78,3 +78,8 @@ Host 3090_server1
 - [x] in robust_hoi_pipeline/eval_sum_vis.py, add args.vis_method_name to determin whether to visulize the method_name. Visulize the method name by default.
 - [x] rsync 3090_server1:/data1/shibo/Documents/project/hold/code/logs to third_party/hold/output_ho3d.
 - [x] create a new file third_party/hold/eval_vis_nvdiffrast.py. In third_party/hold/eval_vis_nvdiffrast.py for each sequence read object mesh file and camera pose from output_ho3d, rgb image, intrinsic from the data directory then rendering a normal image by nvdiffrast_render and overlay the normal to the image as in third_party/FoundationPose/eval_vis_nvdiffrast.py. And add a vis_git to filter the invalid frames as in third_party/FoundationPose/eval_vis_nvdiffrast.py. third_party/hold/eval_vis_nvdiffrast.py shold call the commmon function from utils_simba/eval_vis.py.
+- [x] In third_party/hold/code/eval_vis_nvdiffrast.py for each sequence read object mesh file and camera pose from `logs_ho3d`, rgb image and intrinsic from `data_ho3d`, render normal overlays with nvdiffrast via `utils_simba/eval_vis.py`, and resolve sequence-to-checkpoint mapping from `third_party/hold/docs/data_doc.md` so it can be called from `run_wonder_hoi.py` / `run_wonder_hoi.sh`.
+- [x] In third_party/hold/code/eval_vis_nvdiffrast.py, the correpondences between render_index and frame_idx in the generated frame_map.json is defined in `data_ho3d/build/corres.txt`.
+- [x] In third_party/hold/code/eval_vis_nvdiffrast.py, not only load the object mesh but also hand mesh to render the normal overlay image.
+- [x] In third_party/hold/code/eval_vis_nvdiffrast.py, seal the hand for each frames and save the object mesh in object space in the first frame.
+- [x] follow third_party/hold/docs/setup.md to run bash ./bash/download_data.sh to download hold preprossed data with export HOLD_USERNAME=swang457@connect.hkust-gz.edu.cn and export HOLD_PASSWORD=Simba67379325
