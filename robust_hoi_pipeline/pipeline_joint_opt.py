@@ -2367,6 +2367,7 @@ def register_remaining_frames(image_info, preprocessed_data, output_dir: Path, c
                             extrinsics_o2c=image_info_work["extrinsics"][kf_local_indices],
                             intrinsics=image_info_work["intrinsics"][kf_local_indices],
                             neus_data_dir=neus_data_dir,
+                            masks_hand=[preprocessed_data["masks_hand"][i] for i in kf_local_indices] if "masks_hand" in preprocessed_data else None,
                         )
                         neus_total_steps += 300
                         neus_ckpt, neus_mesh = run_neus_training(

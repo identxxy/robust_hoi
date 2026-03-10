@@ -142,6 +142,7 @@ def main(args):
 
     images_keyframes = [preprocessed_data["images"][i] for i in keyframe_local_indices]
     masks_keyframes = [preprocessed_data["masks_obj"][i] for i in keyframe_local_indices]
+    masks_hand_keyframes = [preprocessed_data["masks_hand"][i] for i in keyframe_local_indices] if "masks_hand" in preprocessed_data else None
     depths_keyframes = [preprocessed_data["depths"][i] for i in keyframe_local_indices]
 
     neus_data_dir = out_dir / "neus_data"
@@ -157,6 +158,7 @@ def main(args):
         extrinsics_o2c=o2c_keyframes,
         intrinsics=K_keyframes,
         neus_data_dir=neus_data_dir,
+        masks_hand=masks_hand_keyframes,
     )
 
     neus_ckpt, neus_mesh = run_neus_training(

@@ -58,6 +58,7 @@ def prepare_neus_data(
     extrinsics_o2c: np.ndarray,
     intrinsics: np.ndarray,
     neus_data_dir: Path,
+    masks_hand: Optional[List[np.ndarray]] = None,
 ) -> None:
     """Write keyframe data to disk in the format expected by ObjDataProvider / robust_hoi dataset.
 
@@ -76,14 +77,17 @@ def prepare_neus_data(
         extrinsics_o2c: (N_kf, 4, 4) object-to-camera (w2c) matrices.
         intrinsics: (N_kf, 3, 3) camera intrinsic matrices.
         neus_data_dir: Output directory for NeuS data.
+        masks_hand: Optional list of (H, W) uint8 hand masks for each keyframe.
+            When provided, the final mask is the union of object and hand masks.
     """
     neus_data_dir = Path(neus_data_dir)
 
     # Create subdirectories
     img_dir = neus_data_dir / "images"
     mask_dir = neus_data_dir / "masks"
+    mask_hand_dir = neus_data_dir / "masks_hand"
     depth_dir = neus_data_dir / "depth_prior"
-    for d in [img_dir, mask_dir, depth_dir]:
+    for d in [img_dir, mask_dir, mask_hand_dir, depth_dir]:
         d.mkdir(parents=True, exist_ok=True)
 
     n_kf = len(images)
@@ -100,12 +104,19 @@ def prepare_neus_data(
         if images[i] is not None:
             Image.fromarray(images[i]).save(str(img_dir / fname))
 
-        # Object mask
+        # mask: object mask only
         if masks[i] is not None:
             mask = masks[i]
             if mask.ndim == 3:
                 mask = mask[:, :, 0]
             Image.fromarray(mask).save(str(mask_dir / fname))
+
+        # hand mask
+        if masks_hand is not None and masks_hand[i] is not None:
+            hand_mask = masks_hand[i]
+            if hand_mask.ndim == 3:
+                hand_mask = hand_mask[:, :, 0]
+            Image.fromarray(hand_mask).save(str(mask_hand_dir / fname))
 
         # Depth (24-bit encoded PNG)
         if depths[i] is not None:
