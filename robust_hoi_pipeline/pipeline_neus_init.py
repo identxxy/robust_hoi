@@ -1,4 +1,6 @@
 import argparse
+import gzip
+import pickle
 import sys
 from pathlib import Path
 
@@ -16,6 +18,53 @@ from robust_hoi_pipeline.frame_management import load_register_indices
 from robust_hoi_pipeline.pipeline_utils import load_sam3d_transform
 
 
+def _load_joint_opt_image_info(joint_opt_dir: Path):
+    """Load the latest saved joint-opt image info.
+
+    `pipeline_joint_opt.py` currently writes split compressed outputs:
+    `shared_info.pkl.gz` plus `<register_idx>/image_info.pkl.gz`. Keep legacy
+    `.npy` fallback for older runs.
+    """
+    register_indices = load_register_indices(joint_opt_dir)
+    if not register_indices:
+        raise RuntimeError(f"No register indices found in {joint_opt_dir / 'register_order.txt'}")
+
+    shared_gz = joint_opt_dir / "shared_info.pkl.gz"
+    shared_npy = joint_opt_dir / "shared_info.npy"
+
+    for register_idx in reversed(register_indices):
+        frame_dir = joint_opt_dir / f"{register_idx:04d}"
+        gz_path = frame_dir / "image_info.pkl.gz"
+        npy_path = frame_dir / "image_info.npy"
+
+        if gz_path.exists():
+            with gzip.open(gz_path, "rb") as f:
+                image_info = pickle.load(f)
+            image_info_path = gz_path
+        elif npy_path.exists():
+            image_info = np.load(npy_path, allow_pickle=True).item()
+            image_info_path = npy_path
+        else:
+            continue
+
+        if shared_gz.exists():
+            with gzip.open(shared_gz, "rb") as f:
+                shared_info = pickle.load(f)
+            shared_info.update(image_info)
+            image_info = shared_info
+        elif shared_npy.exists():
+            shared_info = np.load(shared_npy, allow_pickle=True).item()
+            shared_info.update(image_info)
+            image_info = shared_info
+
+        return image_info, register_idx, image_info_path
+
+    raise FileNotFoundError(
+        f"No saved image info found under {joint_opt_dir}. "
+        "Expected one of <frame>/image_info.pkl.gz or <frame>/image_info.npy."
+    )
+
+
 def main(args):
     data_dir = Path(args.data_dir)
     out_dir = Path(args.output_dir)
@@ -27,15 +76,8 @@ def main(args):
     joint_opt_dir = result_dir / "pipeline_joint_opt"
 
     print("Loading latest image info from pipeline_joint_opt...")
-    register_indices = load_register_indices(joint_opt_dir)
-    if not register_indices:
-        raise RuntimeError(f"No register indices found in {joint_opt_dir / 'register_order.txt'}")
-    last_register_idx = register_indices[-1]
-    image_info_path = joint_opt_dir / f"{last_register_idx:04d}" / "image_info.npy"
-    if not image_info_path.exists():
-        raise FileNotFoundError(f"Latest image info not found: {image_info_path}")
-    image_info = np.load(image_info_path, allow_pickle=True).item()
-    print(f"Loaded image info from {image_info_path}")
+    image_info, last_register_idx, image_info_path = _load_joint_opt_image_info(joint_opt_dir)
+    print(f"Loaded image info from {image_info_path} (register_idx={last_register_idx:04d})")
 
     frame_indices = list(image_info["frame_indices"])
     keyframe_flags = np.array(image_info["keyframe"], dtype=bool)

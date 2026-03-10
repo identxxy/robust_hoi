@@ -1631,6 +1631,7 @@ class run_wonder_hoi:
         cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_neus_init.py "
         cmd += f"--data_dir {data_dir} "
         cmd += f"--output_dir {out_dir} "
+        cmd += f"--result_dir {vggt_code_dir}/output/{scene_name} "
         cmd += f"--cond_index {self.seq_config['cond_idx']} "
         print(cmd)
         os.system(cmd)
