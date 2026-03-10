@@ -65,6 +65,37 @@ def _load_joint_opt_image_info(joint_opt_dir: Path):
     )
 
 
+def _select_registered_frame_subset(image_info, joint_opt_dir: Path, max_registered_frames: int):
+    frame_indices_all = list(image_info["frame_indices"])
+    selected_local_indices = np.arange(len(frame_indices_all), dtype=np.int64)
+
+    if max_registered_frames > 0:
+        register_order = load_register_indices(joint_opt_dir)
+        frame_to_local = {frame_idx: i for i, frame_idx in enumerate(frame_indices_all)}
+        registered_flags = np.asarray(image_info.get("register", []), dtype=bool)
+        seen = set()
+        selected_local_list = []
+        for frame_idx in register_order:
+            if frame_idx in seen:
+                continue
+            local_idx = frame_to_local.get(frame_idx)
+            if local_idx is None:
+                continue
+            if registered_flags.size and not registered_flags[local_idx]:
+                continue
+            selected_local_list.append(local_idx)
+            seen.add(frame_idx)
+            if len(selected_local_list) >= max_registered_frames:
+                break
+        if selected_local_list:
+            selected_local_indices = np.asarray(selected_local_list, dtype=np.int64)
+
+    frame_indices = [frame_indices_all[i] for i in selected_local_indices]
+    keyframe_flags = np.asarray(image_info["keyframe"], dtype=bool)[selected_local_indices]
+    keyframe_local_indices = np.where(keyframe_flags)[0]
+    return frame_indices, selected_local_indices, keyframe_local_indices
+
+
 def main(args):
     data_dir = Path(args.data_dir)
     out_dir = Path(args.output_dir)
@@ -79,13 +110,15 @@ def main(args):
     image_info, last_register_idx, image_info_path = _load_joint_opt_image_info(joint_opt_dir)
     print(f"Loaded image info from {image_info_path} (register_idx={last_register_idx:04d})")
 
-    frame_indices = list(image_info["frame_indices"])
-    keyframe_flags = np.array(image_info["keyframe"], dtype=bool)
-    keyframe_local_indices = np.where(keyframe_flags)[0]
+    print("Loading preprocessed data for image_info frames...")
+    frame_indices, selected_local_indices, keyframe_local_indices = _select_registered_frame_subset(
+        image_info,
+        joint_opt_dir,
+        args.max_registered_frames,
+    )
     if keyframe_local_indices.size == 0:
         raise RuntimeError("No keyframes found in latest image_info.")
 
-    print("Loading preprocessed data for image_info frames...")
     preprocessed_data = load_preprocessed_data(data_preprocess_dir, frame_indices)
 
     print("Loading SAM3D transformation...")
@@ -97,12 +130,12 @@ def main(args):
     # Use keyframe extrinsics/intrinsics from latest joint-opt image_info.
     if "c2o" not in image_info:
         raise KeyError("Latest image_info is missing 'c2o'.")
-    c2o_all = np.asarray(image_info["c2o"], dtype=np.float32)
+    c2o_all = np.asarray(image_info["c2o"], dtype=np.float32)[selected_local_indices]
     o2c_all = np.linalg.inv(c2o_all).astype(np.float32)
     o2c_keyframes = o2c_all[keyframe_local_indices]
 
     if "intrinsics" in image_info:
-        intrinsics_all = np.asarray(image_info["intrinsics"], dtype=np.float32)
+        intrinsics_all = np.asarray(image_info["intrinsics"], dtype=np.float32)[selected_local_indices]
     else:
         intrinsics_all = _stack_intrinsics(preprocessed_data["intrinsics"])
     K_keyframes = intrinsics_all[keyframe_local_indices]
@@ -159,6 +192,8 @@ if __name__ == "__main__":
                         help="Weight for robust HOI loss")
     parser.add_argument("--sam3d_weight", type=float, default=0.5,
                         help="Weight for SAM3D loss")
+    parser.add_argument("--max_registered_frames", type=int, default=-1,
+                        help="If > -1, only use the first N valid registered frames when preparing NeuS data")
 
     args = parser.parse_args()
     main(args)
