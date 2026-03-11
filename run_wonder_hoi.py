@@ -1573,6 +1573,7 @@ class run_wonder_hoi:
         cmd += f"--result_dir {result_dir} "
         cmd += f"--output_dir {out_dir} "
         cmd += f"--cond_index {self.seq_config['cond_idx']} "
+        cmd += f"--max_steps 3000 "
         cmd += f"--robust_hoi_weight 0.0 " # set to 0.0 to disable robust hoi in neus initialization
         cmd += f"--sam3d_weight 1.0 " # only run sam3d neus initialization without robust hoi
         print(cmd)
@@ -1619,6 +1620,7 @@ class run_wonder_hoi:
     def hoi_pipeline_neus_init(self, scene_name, **kwargs):
         self.print_header(f"hoi pipeline neus initialization for {scene_name}")
         data_dir = f"{self.dataset_dir}/{scene_name}"
+        result_dir = f"{vggt_code_dir}/output/{scene_name}/"
         out_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_neus_init"
 
         if self.rebuild:
@@ -1631,8 +1633,13 @@ class run_wonder_hoi:
         cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_neus_init.py "
         cmd += f"--data_dir {data_dir} "
         cmd += f"--output_dir {out_dir} "
-        cmd += f"--result_dir {vggt_code_dir}/output/{scene_name} "
+        cmd += f"--result_dir {result_dir}/ "
         cmd += f"--cond_index {self.seq_config['cond_idx']} "
+        cmd += f"--max_steps 3000 "
+        cmd += f"--robust_hoi_weight 1.0 " # set to 0.0 to disable robust hoi in neus initialization
+        cmd += f"--sam3d_weight 0.0 " # only run sam3d neus initialization without robust hoi
+        if "max_registered_frames" in kwargs:
+            cmd += f"--max_registered_frames {int(kwargs['max_registered_frames'])} "
         print(cmd)
         os.system(cmd)
 
