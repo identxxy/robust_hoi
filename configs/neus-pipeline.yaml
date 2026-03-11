@@ -55,7 +55,7 @@ model:
       resolution: 128
       chunk: 2097152
       threshold: 0.
-      export_radius: 0.6  # If set, use this radius for mesh export instead of model.radius
+      export_radius: 0.7  # If set, use this radius for mesh export instead of model.radius
     xyz_encoding_config:
       otype: HashGrid
       n_levels: 16
