@@ -619,7 +619,7 @@ def _build_default_joint_opt_args(output_dir: Path, cond_index: int) -> SimpleNa
         duplicate_track_thresh=3.0,
         pnp_reproj_thresh=4.0,
         joint_opt_reproj_thresh=4.0,
-        no_optimize_with_point_to_plane=False,
+        optimize_3D_prior=False,
         only_save_register_order=only_save_register_order,
     )
 
@@ -2175,7 +2175,7 @@ def print_image_info_stats(image_info, invalid_cnt):
 
 def register_remaining_frames(image_info, preprocessed_data, output_dir: Path, cond_idx: int,
                                neus_ckpt=None, neus_total_steps=0, sam3d_root_dir=None,
-                               neus_init_mesh=None, no_optimize_with_point_to_plane=False):
+                               neus_init_mesh=None, optimize_3D_prior=False):
 
     from robust_hoi_pipeline.frame_management import (
         find_next_frame,
@@ -2190,7 +2190,7 @@ def register_remaining_frames(image_info, preprocessed_data, output_dir: Path, c
     from robust_hoi_pipeline.neus_integration import prepare_neus_data, run_neus_training, save_neus_mesh
 
     args = _build_default_joint_opt_args(output_dir, cond_idx)
-    args.no_optimize_with_point_to_plane = no_optimize_with_point_to_plane
+    args.optimize_3D_prior = optimize_3D_prior
     neus_data_dir = output_dir / "pipeline_joint_opt" / "neus_data"
 
     frame_indices = image_info["frame_indices"]
@@ -2235,7 +2235,6 @@ def register_remaining_frames(image_info, preprocessed_data, output_dir: Path, c
     }
 
     num_frames = len(frame_indices)
-    latest_neus_mesh = neus_init_mesh
     sam_3d_mesh_file = f"{Path(str(sam3d_root_dir).replace('SAM3D_aligned_post_process', 'SAM3D'))}/scene.glb"
     # Load the SAM3D mesh for depth-based alignment
     sam3d_mesh = None
@@ -2382,19 +2381,16 @@ def register_remaining_frames(image_info, preprocessed_data, output_dir: Path, c
                         )
                         frame_id = image_info['frame_indices'][next_frame_idx]
                         save_neus_mesh(neus_mesh, output_dir / "pipeline_joint_opt" / f"{frame_id:04d}")
-                        latest_neus_mesh = neus_mesh
                     except Exception as exc:
                         print(f"[register_remaining_frames] NeuS resume failed: {exc}")
         else:
             print(f"Frame {image_info['frame_indices'][next_frame_idx]} not marked as keyframe due to high reprojection error ({mean_error:.2f} > {key_frame_min_reproj_thresh})")     
 
 
-
-        # Joint optimize keyframe poses + 3D points against NeuS mesh
-        can_joint_opt = (latest_neus_mesh is not None or args.no_optimize_with_point_to_plane)
-        if can_joint_opt and image_info_work["keyframe"].sum() >= args.min_track_number:
+        # Joint optimize keyframe poses + 3D points
+        if image_info_work["keyframe"].sum() >= args.min_track_number:
             try:
-                mesh_path = None if args.no_optimize_with_point_to_plane else latest_neus_mesh
+                mesh_path = None # disable point-2-plane optimization
                 _joint_optimize_keyframes(
                     image_info_work, mesh_path, cond_local_idx,
                     min_track_number=args.min_track_number,
@@ -2508,25 +2504,23 @@ def main(args):
         neus_init_mesh = None
         neus_total_steps = args.neus_init_steps
         sam3d_root_dir = SAM3D_dir / f"{cond_idx:04d}"
-
-        if not args.no_optimize_with_point_to_plane:
+        if args.optimize_3D_prior:
             from robust_hoi_pipeline.neus_integration import _find_latest_checkpoint, _find_latest_mesh
-            neus_training_dir = out_dir / "pipeline_neus_init" / "neus_training"
-            neus_ckpt = _find_latest_checkpoint(neus_training_dir)
-            neus_init_mesh = _find_latest_mesh(neus_training_dir)
+            neus_training_dir = sam3d_root_dir / "neus" / "neus_training" / "joint_opt"
+            neus_ckpt = _find_latest_checkpoint(neus_training_dir / "ckpt")
+            neus_init_mesh = _find_latest_mesh(neus_training_dir / "save")
 
             if neus_ckpt is None:
-                print(f"[WARNING] No NeuS checkpoint found in {neus_training_dir}. "
-                      "Run pipeline_neus_init.py first. NeuS resume will be skipped.")
+                raise FileNotFoundError(f"No NeuS checkpoint found in {neus_training_dir}. Please run hoi_pipeline_data_preprocess_sam3d_neus.py first to generate the checkpoint.")
         else:
-            print("[INFO] Point-to-plane disabled. Skipping NeuS mesh/checkpoint loading.")
+            print("[INFO] 3D prior optimization disabled. Skipping NeuS mesh/checkpoint loading.")
 
         # 8. Register remaining frames with incremental NeuS
         register_remaining_frames(
             image_info, preprocessed_data, out_dir, cond_idx,
             neus_ckpt=neus_ckpt, neus_total_steps=neus_total_steps,
             sam3d_root_dir=sam3d_root_dir, neus_init_mesh=neus_init_mesh,
-            no_optimize_with_point_to_plane=args.no_optimize_with_point_to_plane,
+            optimize_3D_prior=args.optimize_3D_prior,
         )
     finally:
         sys.stdout = orig_stdout
@@ -2547,7 +2541,7 @@ if __name__ == "__main__":
                         help="Condition frame index (keyframe with known SAM3D pose)")
     parser.add_argument("--neus_init_steps", type=int, default=10000,
                         help="Number of NeuS training steps used in pipeline_neus_init.py (for resuming)")
-    parser.add_argument("--no_optimize_with_point_to_plane", action="store_true", default=True,
+    parser.add_argument("--optimize_3D_prior", action="store_true", default=False,
                         help="Disable point-to-plane loss and skip NeuS mesh loading")
     parser.add_argument("--vis_thresh", type=float, default=0.3,
                         help="Visibility score threshold for filtering tracks in the condition frame")
