@@ -36,6 +36,8 @@ model:
   cos_anneal_end: ${trainer.max_steps}
   learned_background: false
   background_color: random
+  fg_bg_sample_rate: None  #Note: open fg_bg_sample_rate will decrease optimization speed 30%. Ratio of rays sampled from object foreground vs background (excluding hand)
+  bg_bbox_scale: 1.2       # Scale factor (>= 1.0) for background sampling bbox relative to union mask bbox when fg_bg_sample_rate is not None
   vis_scene_rerun: ${system.vis_scene_rerun}
   # Depth-guided sampling config
   use_depth_guided: ${dataset.use_depth_guided}
@@ -144,6 +146,6 @@ trainer:
   num_sanity_val_steps: 0
   val_check_interval: 10000000 # Disable val during training
   limit_train_batches: 1.0
-  limit_val_batches: 2
+  limit_val_batches: 10
   enable_progress_bar: true
   precision: 16
