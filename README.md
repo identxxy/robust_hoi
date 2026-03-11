@@ -124,7 +124,19 @@ CMAKE_PREFIX_PATH=~/miniconda3/envs/vggsfm_tmp/lib/python3.10/site-packages/pybi
 cd ../../
 
 
-```
+# ---- hold
+# install kaolin from pip
+pip install kaolin==0.15.0 -f https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.1.0_cu118.html
+
+# install kaolin from source code
+# git clone --recursive https://github.com/NVIDIAGameWorks/kaolin
+# cd kaolin
+# git checkout v0.10.0
+# python setup.py install
+# cd ../../
+
+cd third_party/hold/code && python setup.py build_ext --inplace
+pip install pygit2==1.10.1 comet-ml==3.40.0
 
 ## Third party lib installation
 ```bash
