@@ -2431,7 +2431,7 @@ def register_remaining_frames(image_info, preprocessed_data, output_dir: Path, c
             except Exception as exc:
                 print(f"[register_remaining_frames] joint optimization failed: {exc}")
 
-        if image_info_work['keyframe'][next_frame_idx] and (key_frame_num >= 40) and (key_frame_num % 10 == 0) and args.optimize_3D_prior:
+        if image_info_work['keyframe'][next_frame_idx] and (key_frame_num >= 5) and (key_frame_num % 5 == 0) and args.optimize_3D_prior:
             neus_data_dir = output_dir / "pipeline_joint_opt" / "neus_data" / f"{image_info_work['frame_indices'][next_frame_idx]:04d}"
             neus_training_dir = output_dir / "pipeline_joint_opt" / "neus_training" / f"{image_info_work['frame_indices'][next_frame_idx]:04d}"
             keyframe_local_indices = np.flatnonzero(image_info_work["keyframe"].astype(bool))
@@ -2467,7 +2467,7 @@ def register_remaining_frames(image_info, preprocessed_data, output_dir: Path, c
                     max_steps=neus_total_steps,
                     checkpoint_path=None,
                     output_dir=neus_training_dir,
-                    sam3d_root_dir=sam3d_root_dir,
+                    sam3d_root_dir=None,
                     robust_hoi_weight=1.0,
                     sam3d_weight=0.0,
                 )
