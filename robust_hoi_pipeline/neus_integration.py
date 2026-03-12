@@ -231,7 +231,7 @@ def run_neus_training(
         cli_args = [
             f"dataset.root_dir={neus_data_dir}",
             f"trainer.max_steps={max_steps}",
-            f"export.export_vertex_color=false",
+            f"export.export_vertex_color=true",
             f"checkpoint.every_n_train_steps={max_steps}",
             f"dataset.robust_hoi_weight={robust_hoi_weight}",
             f"dataset.sam3d_weight={sam3d_weight}",

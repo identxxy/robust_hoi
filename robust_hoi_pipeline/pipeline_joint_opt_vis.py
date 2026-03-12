@@ -166,6 +166,40 @@ def load_sam3d_mesh(sam3d_dir: Path, cond_idx: int) -> Optional[trimesh.Trimesh]
     return None
 
 
+def log_neus_mesh_from_dir(
+    save_dir: Path,
+    entity_path: str,
+    scale: float,
+    align_transform: Optional[np.ndarray] = None,
+) -> None:
+    """Find the latest .obj under save_dir and log it to rerun as a non-static mesh."""
+    if not save_dir.exists():
+        return
+    mesh_files = list(save_dir.rglob("*.obj"))
+    if not mesh_files:
+        return
+    latest_mesh_file = max(mesh_files, key=lambda p: p.stat().st_mtime)
+    neus_mesh = trimesh.load(str(latest_mesh_file), force="mesh")
+    mesh_colors = None
+    if hasattr(neus_mesh.visual, "vertex_colors") and neus_mesh.visual.vertex_colors is not None:
+        mesh_colors = np.asarray(neus_mesh.visual.vertex_colors)[:, :3]
+    vertices = np.array(neus_mesh.vertices, dtype=np.float32) * scale
+    if align_transform is not None:
+        verts_homo = np.hstack([vertices, np.ones((len(vertices), 1), dtype=np.float32)])
+        vertices = (align_transform @ verts_homo.T).T[:, :3].astype(np.float32)
+    rr.log(
+        entity_path,
+        rr.Mesh3D(
+            vertex_positions=vertices,
+            triangle_indices=neus_mesh.faces,
+            vertex_normals=neus_mesh.vertex_normals if neus_mesh.vertex_normals is not None else None,
+            vertex_colors=mesh_colors,
+        ),
+        static=False,
+    )
+
+
+
 def log_static_trimesh_mesh(
     entity_path: str,
     mesh: trimesh.Trimesh,
@@ -759,7 +793,8 @@ def main(args):
     data_preprocess_dir = data_dir / "pipeline_preprocess"
     tracks_dir = data_dir / "pipeline_corres"
     results_dir = out_dir / "pipeline_joint_opt"
-    neus_dir = out_dir / "pipeline_neus_init"
+    neus_init_dir = out_dir / "pipeline_neus_init"
+    neus_joint_opt_dir = out_dir / "pipeline_joint_opt"
 
     # Parse per-frame log blocks from log.txt
     frame_logs = parse_frame_logs(results_dir / "log.txt")
@@ -829,16 +864,17 @@ def main(args):
             default_color=0.7,
         )
 
-    neus_mesh_dir = neus_dir / "neus_training" /  "joint_opt" / "save"
+    neus_mesh_dir = neus_init_dir / "neus_training" /  "joint_opt" / "save"
     neus_mesh_path = find_latest_mesh_file(neus_mesh_dir)
     if neus_mesh_path is None:
         print(f"NeuS mesh not found under {neus_mesh_dir}, skipping")
     else:
         print(f"Loading NeuS mesh from {neus_mesh_path}")
+        import trimesh
         neus_mesh = trimesh.load(str(neus_mesh_path), force="mesh", process=False)
         if isinstance(neus_mesh, trimesh.Trimesh):
             log_static_trimesh_mesh(
-                entity_path="world/neus/mesh",
+                entity_path="world/neus_init/mesh",
                 mesh=neus_mesh,
                 scale=scale,
                 align_transform=align_pred_to_gt,
@@ -936,6 +972,14 @@ def main(args):
         # Log per-frame registration log
         if frame_idx in frame_logs:
             rr.log("frame_log", rr.TextLog(frame_logs[frame_idx]), static=False)
+
+        neus_joint_opt_mesh_path = neus_joint_opt_dir / "neus_training" / f"{frame_idx:04d}" / "joint_opt" / "save"
+        log_neus_mesh_from_dir(
+            save_dir=neus_joint_opt_mesh_path,
+            entity_path="world/neus_joint_opt/mesh",
+            scale=scale,
+            align_transform=align_pred_to_gt,
+        )
 
 
 
