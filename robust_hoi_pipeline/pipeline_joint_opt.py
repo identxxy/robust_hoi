@@ -2579,14 +2579,14 @@ def main(args):
         neus_init_mesh = None
         neus_total_steps = args.neus_init_steps
         sam3d_root_dir = SAM3D_dir / f"{cond_idx:04d}"
-        if args.optimize_3D_prior:
-            from robust_hoi_pipeline.neus_integration import load_latest_neus_artifacts
+        # if args.optimize_3D_prior:
+        #     from robust_hoi_pipeline.neus_integration import load_latest_neus_artifacts
 
-            neus_ckpt, neus_init_mesh, ckpt_global_step = load_latest_neus_artifacts(sam3d_root_dir)
-            if ckpt_global_step is not None:
-                neus_total_steps = ckpt_global_step
-        else:
-            print("[INFO] 3D prior optimization disabled. Skipping NeuS mesh/checkpoint loading.")
+        #     neus_ckpt, neus_init_mesh, ckpt_global_step = load_latest_neus_artifacts(sam3d_root_dir)
+        #     if ckpt_global_step is not None:
+        #         neus_total_steps = ckpt_global_step
+        # else:
+        #     print("[INFO] 3D prior optimization disabled. Skipping NeuS mesh/checkpoint loading.")
 
         # 8. Register remaining frames with incremental NeuS
         register_remaining_frames(
