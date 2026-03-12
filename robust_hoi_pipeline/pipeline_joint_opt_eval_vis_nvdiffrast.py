@@ -230,6 +230,7 @@ def main(args):
     results_dir = Path(args.result_folder)
     sam3d_dir = Path(args.SAM3D_dir)
     output_dir = Path(args.out_dir)
+    neus_dir = results_dir / "neus_training"
 
     image_info = load_image_info(results_dir)
     sam3d_tf = load_sam3d_transform(sam3d_dir, args.cond_index)
@@ -259,8 +260,16 @@ def main(args):
     c2o_scaled = c2o.copy()
     c2o_scaled[:, :3, 3] *= scale
     o2c_all = np.linalg.inv(c2o_scaled)
-
-    mesh_path = get_sam3d_mesh_path(sam3d_dir, args.cond_index)
+    
+    if args.mesh_type == "sam3d":
+        mesh_path = get_sam3d_mesh_path(sam3d_dir, args.cond_index)
+    elif args.mesh_type == "neus":
+        obj_files = sorted(neus_dir.rglob("*.obj"), key=lambda p: p.stat().st_mtime)
+        if not obj_files:
+            raise FileNotFoundError(f"No .obj file found under {neus_dir}")
+        mesh_path = obj_files[-1]
+    else:
+        raise ValueError(f"Unsupported mesh type: {args.mesh_type}")
     print(f"Using mesh: {mesh_path}")
     mesh_obj = build_mesh_in_object_space(
         mesh_path=mesh_path,
@@ -310,6 +319,7 @@ def parse_args():
     parser.add_argument("--render_hand", dest="render_hand", action="store_true", help="Render sealed right-hand mesh together with the object mesh")
     parser.add_argument("--no_render_hand", dest="render_hand", action="store_false", help="Render only the object mesh")
     parser.set_defaults(render_hand=True)
+    parser.add_argument("--mesh_type", type=str, default="neus", choices=["sam3d", "neus"], help="Mesh source to use: 'neus' (default) or 'sam3d'")
     return parser.parse_args()
 
 

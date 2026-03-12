@@ -188,7 +188,7 @@ if __name__ == "__main__":
                         help="Weight for robust HOI loss")
     parser.add_argument("--sam3d_weight", type=float, default=0.5,
                         help="Weight for SAM3D loss")
-    parser.add_argument("--max_registered_frames", type=int, default=81,
+    parser.add_argument("--max_registered_frames", type=int, default=-1,
                         help="If > -1, only use the first N valid registered frames when preparing NeuS data")
 
     args = parser.parse_args()
