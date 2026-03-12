@@ -193,7 +193,7 @@ def log_neus_mesh_from_dir(
             vertex_positions=vertices,
             triangle_indices=neus_mesh.faces,
             vertex_normals=neus_mesh.vertex_normals if neus_mesh.vertex_normals is not None else None,
-            vertex_colors=mesh_colors,
+            # vertex_colors=mesh_colors,
         ),
         static=False,
     )
