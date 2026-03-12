@@ -2048,7 +2048,12 @@ def check_which_estimate_is_better_and_update(
     fp_pose_neus=None,
     fp_success_neus=False,
 ):
-    """Select and apply the better estimate pose using depth 3D NN distance in object space."""
+    """Select the best pose estimate using depth 3D NN distance in object space.
+
+    Returns:
+        (best_pose, success, best_score) — does NOT update extrinsics;
+        the caller is responsible for applying the pose.
+    """
     candidates = []
     if pnp_success and pnp_pose is not None:
         candidates.append(("pnp", np.asarray(pnp_pose, dtype=np.float64)))
@@ -2059,24 +2064,20 @@ def check_which_estimate_is_better_and_update(
 
     if not candidates:
         print(f"[pose_select] Frame {frame_idx}: no valid pose estimate candidates")
-        return None, False
+        return None, False, np.inf
 
     nearest_idx = _find_nearest_registered_frame(image_info_work, frame_idx)
     if nearest_idx is None:
         src, pose = candidates[0]
-        image_info_work["extrinsics"][frame_idx, :3, :3] = pose[:3, :3].astype(np.float32)
-        image_info_work["extrinsics"][frame_idx, :3, 3] = pose[:3, 3].astype(np.float32)
         print(f"[pose_select] Frame {frame_idx}: no nearby registered frame, choose {src}")
-        return pose, True
+        return pose, True, np.inf
 
     nearby_pose = image_info_work["extrinsics"][nearest_idx].astype(np.float64)
     nearby_pts_obj = _build_depth_points_obj_for_pose(image_info_work, nearest_idx, nearby_pose)
     if nearby_pts_obj is None:
         src, pose = candidates[0]
-        image_info_work["extrinsics"][frame_idx, :3, :3] = pose[:3, :3].astype(np.float32)
-        image_info_work["extrinsics"][frame_idx, :3, 3] = pose[:3, 3].astype(np.float32)
         print(f"[pose_select] Frame {frame_idx}: nearby depth points unavailable, choose {src}")
-        return pose, True
+        return pose, True, np.inf
 
     best_src = None
     best_pose = None
@@ -2092,12 +2093,10 @@ def check_which_estimate_is_better_and_update(
 
     if best_pose is None:
         print(f"[pose_select] Frame {frame_idx}: pose scoring failed")
-        return None, False
+        return None, False, np.inf
 
-    image_info_work["extrinsics"][frame_idx, :3, :3] = best_pose[:3, :3].astype(np.float32)
-    image_info_work["extrinsics"][frame_idx, :3, 3] = best_pose[:3, 3].astype(np.float32)
     print(f"[pose_select] Frame {frame_idx}: selected {best_src} (score={best_score:.6f})")
-    return best_pose, True
+    return best_pose, True, best_score
 
 
 def _check_contact_and_reset(hand_verts_in_cam, obj_verts, image_info_work, frame_idx, device, thresh_contact=0.06):
@@ -2296,26 +2295,53 @@ def register_remaining_frames(image_info, preprocessed_data, output_dir: Path, c
             save_results(image_info=image_info, register_idx= image_info['frame_indices'][next_frame_idx], preprocessed_data=preprocessed_data, results_dir=output_dir / "pipeline_joint_opt", only_save_register_order=args.only_save_register_order)
             print_image_info_stats(image_info_work, invalid_cnt)
             continue
-
+        best_score = np.inf
+        best_pose_overall = None
+        estimate_success = False
+        max_iter_number = 3
+        fp_crop_ratio = 1.0
+        fp_crop_ratio_scale = 1.2
         pnp_pose, pnp_success = register_new_frame_by_PnP(
             image_info_work, next_frame_idx, args, update_pose=False, return_pose=True
-        )
-        fp_pose_sam3d, fp_success_sam3d = _reset_and_track_foundation_pose(
-            image_info_work, next_frame_idx, sam3d_mesh, debug_dir=debug_dir
-        )
-        fp_pose_neus, fp_success_neus = _reset_and_track_foundation_pose(
-            image_info_work, next_frame_idx, neus_mesh_trimesh, debug_dir=debug_dir
-        )
-        _, estimate_success = check_which_estimate_is_better_and_update(
-            image_info_work,
-            next_frame_idx,
-            pnp_pose=pnp_pose,
-            pnp_success=pnp_success,
-            fp_pose=fp_pose_sam3d,
-            fp_success=fp_success_sam3d,
-            fp_pose_neus=fp_pose_neus,
-            fp_success_neus=fp_success_neus,
-        )
+        )        
+        for iters in range(max_iter_number):
+            if best_score <= 0.01:
+                break
+            fp_crop_ratio *= fp_crop_ratio_scale
+
+
+            # Set crop_ratio on the shared refiner before FoundationPose tracking
+            refiner = _foundation_pose_cache.get("refiner")
+            if refiner is not None:
+                refiner.cfg['crop_ratio'] = fp_crop_ratio
+
+            fp_pose_sam3d, fp_success_sam3d = _reset_and_track_foundation_pose(
+                image_info_work, next_frame_idx, sam3d_mesh, debug_dir=debug_dir
+            )
+            fp_pose_neus, fp_success_neus = _reset_and_track_foundation_pose(
+                image_info_work, next_frame_idx, neus_mesh_trimesh, debug_dir=debug_dir
+            )
+            iter_pose, iter_success, iter_score = check_which_estimate_is_better_and_update(
+                image_info_work,
+                next_frame_idx,
+                pnp_pose=pnp_pose,
+                pnp_success=pnp_success,
+                fp_pose=fp_pose_sam3d,
+                fp_success=fp_success_sam3d,
+                fp_pose_neus=fp_pose_neus,
+                fp_success_neus=fp_success_neus,
+            )
+            print(f"[register] Frame {next_frame_idx} iter {iters}: score={iter_score:.6f}, fp_crop_ratio={fp_crop_ratio:.2f}")
+            if iter_success and iter_score < best_score:
+                best_score = iter_score
+                best_pose_overall = iter_pose
+                estimate_success = True
+
+        # Apply the best pose found across all iterations
+        if best_pose_overall is not None:
+            image_info_work["extrinsics"][next_frame_idx, :3, :3] = best_pose_overall[:3, :3].astype(np.float32)
+            image_info_work["extrinsics"][next_frame_idx, :3, 3] = best_pose_overall[:3, 3].astype(np.float32)
+            print(f"[register] Frame {next_frame_idx}: applied best pose (score={best_score:.6f})")
         if not estimate_success:
             print(f"[register_remaining_frames] Pose estimation failed for frame {next_frame_idx}, resetting to nearest registered frame")
             _reset_pose_to_nearest_registered(image_info_work, next_frame_idx)
