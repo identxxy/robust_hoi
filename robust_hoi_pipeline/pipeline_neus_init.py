@@ -18,7 +18,7 @@ from robust_hoi_pipeline.frame_management import load_register_indices
 from robust_hoi_pipeline.pipeline_utils import load_sam3d_transform
 
 
-def _load_joint_opt_image_info(joint_opt_dir: Path):
+def _load_joint_opt_image_info(joint_opt_dir: Path, excluded_global=False) -> dict:
     """Load the latest saved joint-opt image info.
 
     `pipeline_joint_opt.py` currently writes split compressed outputs:
@@ -33,6 +33,8 @@ def _load_joint_opt_image_info(joint_opt_dir: Path):
     shared_npy = joint_opt_dir / "shared_info.npy"
 
     for register_idx in reversed(register_indices):
+        if excluded_global and register_idx >= 9900:
+            continue
         frame_dir = joint_opt_dir / f"{register_idx:04d}"
         gz_path = frame_dir / "image_info.pkl.gz"
         npy_path = frame_dir / "image_info.npy"
