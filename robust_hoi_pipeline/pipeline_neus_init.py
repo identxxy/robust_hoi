@@ -151,31 +151,24 @@ def main(args):
     image_info, last_register_idx, image_info_path = _load_joint_opt_image_info(joint_opt_dir)
     print(f"Loaded image info from {image_info_path} (register_idx={last_register_idx:04d})")
 
-    print("Loading preprocessed data for image_info frames...")
-    frame_indices, selected_local_indices, keyframe_local_indices = _select_registered_frame_subset(
-        image_info,
-        joint_opt_dir,
-        args.max_registered_frames,
-    )
-    if keyframe_local_indices.size == 0:
-        raise RuntimeError("No keyframes found in latest image_info.")
-
-    preprocessed_data = load_preprocessed_data(data_preprocess_dir, frame_indices)
-
     if args.gt_pose:
+        # Use all frames from preprocessed data (not just registered ones from joint-opt)
+        from robust_hoi_pipeline.pipeline_utils import load_frame_list
+        frame_indices = load_frame_list(data_preprocess_dir)
+        print(f"GT pose mode: using all {len(frame_indices)} preprocessed frames")
+
+        preprocessed_data = load_preprocessed_data(data_preprocess_dir, frame_indices)
+
         # Use GT extrinsics from HO3D processed data
         print("Using GT poses for NeuS initialization...")
         gt_o2c, gt_valid = _load_gt_o2c(data_dir, frame_indices)
-        o2c_all = gt_o2c
-        o2c_keyframes_raw = o2c_all[keyframe_local_indices]
-        valid_keyframes = gt_valid[keyframe_local_indices]
 
         # Filter to only valid GT poses
-        valid_mask = valid_keyframes.astype(bool)
+        valid_mask = gt_valid.astype(bool)
         if not np.any(valid_mask):
-            raise RuntimeError("No valid GT poses found for keyframes.")
-        o2c_keyframes = o2c_keyframes_raw[valid_mask]
-        print(f"GT poses: {valid_mask.sum()}/{len(valid_mask)} keyframes have valid GT poses")
+            raise RuntimeError("No valid GT poses found.")
+        o2c_keyframes = gt_o2c[valid_mask]
+        print(f"GT poses: {valid_mask.sum()}/{len(valid_mask)} frames have valid GT poses")
 
         # Get scale from aligned_transform.json in sam3d_root_dir and apply to o2c translations
         from robust_hoi_pipeline.pipeline_utils import load_sam3d_transform
@@ -185,7 +178,26 @@ def main(args):
         # where cam_translation = sam3d_translation * scale, so divide by scale
         o2c_keyframes[:, :3, 3] /= sam3d_scale
         print(f"Applied SAM3D scale={sam3d_scale:.6f} to GT o2c translations")
+
+        intrinsics_all = _stack_intrinsics(preprocessed_data["intrinsics"])
+        K_keyframes = intrinsics_all[valid_mask]
+
+        images_keyframes = [preprocessed_data["images"][i] for i, v in enumerate(valid_mask) if v]
+        masks_keyframes = [preprocessed_data["masks_obj"][i] for i, v in enumerate(valid_mask) if v]
+        masks_hand_keyframes = [preprocessed_data["masks_hand"][i] for i, v in enumerate(valid_mask) if v] if "masks_hand" in preprocessed_data else None
+        depths_keyframes = [preprocessed_data["depths"][i] for i, v in enumerate(valid_mask) if v]
     else:
+        print("Loading preprocessed data for image_info frames...")
+        frame_indices, selected_local_indices, keyframe_local_indices = _select_registered_frame_subset(
+            image_info,
+            joint_opt_dir,
+            args.max_registered_frames,
+        )
+        if keyframe_local_indices.size == 0:
+            raise RuntimeError("No keyframes found in latest image_info.")
+
+        preprocessed_data = load_preprocessed_data(data_preprocess_dir, frame_indices)
+
         # Use keyframe extrinsics from latest joint-opt image_info.
         if "c2o" not in image_info:
             raise KeyError("Latest image_info is missing 'c2o'.")
@@ -194,25 +206,25 @@ def main(args):
         o2c_keyframes = o2c_all[keyframe_local_indices]
         valid_mask = None
 
-    if "intrinsics" in image_info:
-        intrinsics_all = np.asarray(image_info["intrinsics"], dtype=np.float32)[selected_local_indices]
-    else:
-        intrinsics_all = _stack_intrinsics(preprocessed_data["intrinsics"])
-    K_keyframes = intrinsics_all[keyframe_local_indices]
+        if "intrinsics" in image_info:
+            intrinsics_all = np.asarray(image_info["intrinsics"], dtype=np.float32)[selected_local_indices]
+        else:
+            intrinsics_all = _stack_intrinsics(preprocessed_data["intrinsics"])
+        K_keyframes = intrinsics_all[keyframe_local_indices]
 
-    images_keyframes = [preprocessed_data["images"][i] for i in keyframe_local_indices]
-    masks_keyframes = [preprocessed_data["masks_obj"][i] for i in keyframe_local_indices]
-    masks_hand_keyframes = [preprocessed_data["masks_hand"][i] for i in keyframe_local_indices] if "masks_hand" in preprocessed_data else None
-    depths_keyframes = [preprocessed_data["depths"][i] for i in keyframe_local_indices]
+        images_keyframes = [preprocessed_data["images"][i] for i in keyframe_local_indices]
+        masks_keyframes = [preprocessed_data["masks_obj"][i] for i in keyframe_local_indices]
+        masks_hand_keyframes = [preprocessed_data["masks_hand"][i] for i in keyframe_local_indices] if "masks_hand" in preprocessed_data else None
+        depths_keyframes = [preprocessed_data["depths"][i] for i in keyframe_local_indices]
 
-    # Filter to valid GT poses if using gt_pose
-    if valid_mask is not None:
-        K_keyframes = K_keyframes[valid_mask]
-        images_keyframes = [img for img, v in zip(images_keyframes, valid_mask) if v]
-        masks_keyframes = [m for m, v in zip(masks_keyframes, valid_mask) if v]
-        if masks_hand_keyframes is not None:
-            masks_hand_keyframes = [m for m, v in zip(masks_hand_keyframes, valid_mask) if v]
-        depths_keyframes = [d for d, v in zip(depths_keyframes, valid_mask) if v]
+        # Filter to valid GT poses if using gt_pose
+        if valid_mask is not None:
+            K_keyframes = K_keyframes[valid_mask]
+            images_keyframes = [img for img, v in zip(images_keyframes, valid_mask) if v]
+            masks_keyframes = [m for m, v in zip(masks_keyframes, valid_mask) if v]
+            if masks_hand_keyframes is not None:
+                masks_hand_keyframes = [m for m, v in zip(masks_hand_keyframes, valid_mask) if v]
+            depths_keyframes = [d for d, v in zip(depths_keyframes, valid_mask) if v]
 
     neus_data_dir = out_dir / "neus_data"
     
