@@ -117,8 +117,17 @@ def main(args):
     print("Global optimization complete.")
 
     # Write optimized poses and 3D points back into image_info
+    image_info["invalid"] = image_info_work["invalid"].tolist()
+    image_info["keyframe"] = image_info_work["keyframe"].tolist()
     image_info["c2o"] = np.linalg.inv(image_info_work["extrinsics"]).astype(np.float32)
     image_info["points_3d"] = image_info_work["points_3d"].astype(np.float32)
+    n_frames = len(frame_indices)
+    image_info.setdefault("depth_points_obj", [None] * n_frames)
+    image_info.setdefault("depth_after_PnP", [None] * n_frames)
+    image_info.setdefault("depth_after_align_mesh", [None] * n_frames)
+    image_info.setdefault("depth_after_keyframes_opt", [None] * n_frames)
+    image_info.setdefault("depth_after_reset_when_pnp_fail", [None] * n_frames)
+    image_info["tracks_mask"] = tracks_mask
 
     # Save image_info with frame index 9999 and update the register order file
     save_results(

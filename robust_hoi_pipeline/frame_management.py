@@ -55,7 +55,7 @@ def load_register_indices(output_dir):
     """
     filepath = os.path.join(output_dir, "register_order.txt")
     with open(filepath, "r") as f:
-        return [int(line.strip()) for line in f if line.strip()]
+        return [int(line.strip()) for line in f if line.strip() and int(line.strip()) < 9900]
 
 
 def find_next_frame(image_info, find_mode="sequential"):
