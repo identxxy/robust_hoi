@@ -238,6 +238,7 @@ def main(args):
         sam3d_root_dir=sam3d_root_dir,
         robust_hoi_weight=args.robust_hoi_weight,
         sam3d_weight=args.sam3d_weight,
+        export_only=args.export_only,
     )
 
     # if neus_mesh:
@@ -266,6 +267,8 @@ if __name__ == "__main__":
                         help="If > -1, only use the first N valid registered frames when preparing NeuS data")
     parser.add_argument("--gt_pose", action="store_true", default=False,
                         help="Use GT object poses from ho3d_v3/processed/{seq_name}.pt instead of joint-opt poses")
+    parser.add_argument("--export_only", action="store_true", default=False,
+                        help="Skip training, load latest checkpoint and export mesh only")
 
     args = parser.parse_args()
     main(args)

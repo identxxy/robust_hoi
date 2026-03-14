@@ -162,6 +162,7 @@ def run_neus_training(
     gpu_id: int = 0,
     robust_hoi_weight: float = 1.0,
     sam3d_weight: float = 0.3,
+    export_only: bool = False,
 ) -> Tuple[Optional[str], Optional[str]]:
     """Run NeuS training in-process with system caching.
 
@@ -236,7 +237,7 @@ def run_neus_training(
             f"dataset.robust_hoi_weight={robust_hoi_weight}",
             f"dataset.sam3d_weight={sam3d_weight}",
         ]
-        if sam3d_root_dir and Path(sam3d_root_dir).exists():
+        if sam3d_root_dir and Path(sam3d_root_dir).exists() and sam3d_weight > 0.0:
             cli_args.append(f"dataset.sam3d_root_dir={sam3d_root_dir}")
 
         config = load_config(str(config_resolved), cli_args=cli_args)
@@ -299,17 +300,30 @@ def run_neus_training(
     )
 
     # ------------------------------------------------------------------
-    # Train
+    # Train or export only
     # ------------------------------------------------------------------
-    print(f"[NeuS] Training: max_steps={max_steps}, resume={'yes' if resume_ckpt else 'no'}")
-    if resume_ckpt:
-        trainer.fit(system, datamodule=dm, ckpt_path=resume_ckpt)
+    if export_only:
+        # Skip training, just load checkpoint and export mesh
+        resume_ckpt = _find_latest_checkpoint(output_dir)
+        if resume_ckpt is None:
+            raise FileNotFoundError(f"[NeuS] No checkpoint found in {output_dir} for export_only mode")
+        import torch
+        ckpt = torch.load(resume_ckpt, map_location="cpu")
+        system.load_state_dict(ckpt["state_dict"], strict=False)
+        print(f"[NeuS] Export only: loaded checkpoint {resume_ckpt}")
+        system.trainer = trainer  # attach trainer so system.print() / system.export() works
+        system.cuda()
+        system.export()
     else:
-        trainer.fit(system, datamodule=dm)
+        print(f"[NeuS] Training: max_steps={max_steps}, resume={'yes' if resume_ckpt else 'no'}")
+        if resume_ckpt:
+            trainer.fit(system, datamodule=dm, ckpt_path=resume_ckpt)
+        else:
+            trainer.fit(system, datamodule=dm)
 
-    # Export mesh
-    system.cuda()
-    system.export()
+        # Export mesh
+        system.cuda()
+        system.export()
 
     # ------------------------------------------------------------------
     # Update cache

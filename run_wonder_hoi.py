@@ -1651,7 +1651,9 @@ class run_wonder_hoi:
         result_dir = f"{vggt_code_dir}/output/{scene_name}/"
         out_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_neus_global"
 
-        if self.rebuild:
+        export_only = str(kwargs.get("export_only", "")).lower() in {"1", "true", "yes"}
+
+        if self.rebuild and not export_only:
             cmd = f"rm -rf {out_dir}"
             print(cmd)
             os.system(cmd)
@@ -1663,12 +1665,14 @@ class run_wonder_hoi:
         cmd += f"--output_dir {out_dir} "
         cmd += f"--result_dir {result_dir}/ "
         cmd += f"--cond_index {self.seq_config['cond_idx']} "
-        cmd += f"--max_steps 10000 "
+        cmd += f"--max_steps 20000 "
         cmd += f"--robust_hoi_weight 1.0 " # set to 0.0 to disable robust hoi in neus initialization
         cmd += f"--sam3d_weight 0.0 " # only run sam3d neus initialization without robust hoi
         # cmd += f"--gt_pose "
         if "max_registered_frames" in kwargs:
             cmd += f"--max_registered_frames {int(kwargs['max_registered_frames'])} "
+        if export_only:
+            cmd += f"--export_only "
         print(cmd)
         os.system(cmd)
 
