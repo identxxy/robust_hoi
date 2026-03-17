@@ -14,6 +14,8 @@ import pytorch_lightning as pl
 import cv2
 from PIL import Image
 import torch.nn.functional as F
+from pytorch3d.ops import knn_points
+
 import os
 
 from pytorch3d.structures import Meshes
@@ -102,6 +104,23 @@ def loss_fn_h_j2d(preds, targets, conf, valid_frames=None):
     
     loss_2d = loss_2d.mean() * conf.j2d
     loss += loss_2d
+    
+    if "left" in preds:
+        # if "left" in preds and "left" in targets:
+        targets_j2d = targets["left.j2d.gt"].to(device)
+
+        if valid_frames is None:
+            is_valid = (~torch.isnan(targets_j2d[:, 0, 0]))
+        else:
+            is_valid = (~torch.isnan(targets_j2d[:, 0, 0])) & valid_frames
+
+        loss_2d = gmof(
+            preds["left.j2d"][is_valid] - targets_j2d[is_valid, :, :2], sigma=conf.j2d_sigma
+        ).sum(dim=-1)
+
+        loss_2d = loss_2d.mean() * conf.j2d
+        loss += loss_2d
+
     return loss
 
 def loss_fn_h_v3d(preds, targets, conf, valid_frames=None):
@@ -284,6 +303,21 @@ def loss_fn_occluded_contact(preds, targets, conf, ray_hit, debug=False):
 
     return loss
 
+def loss_fn_knn_contact(preds, targets, conf):
+    v3d_h = preds["right.v3d_obj"]
+    v3d_o = preds["object.v3d_obj"]
+    with open("./code/body_models/contact_zones.pkl", "rb") as f:
+        contact_zones = pkl.load(f)
+    contact_zones = contact_zones["contact_zones"]
+    contact_idx = np.array([item for sublist in contact_zones.values() for item in sublist])
+
+    v3d_tips = v3d_h[:, contact_idx]
+
+    # contact
+    loss_fine_ho = knn_points(v3d_tips, v3d_o, K=1, return_nn=False)[0].mean()
+    loss = conf.vis_contact * loss_fine_ho
+    return loss
+
 def loss_fn_vis_contact(preds, targets, conf, ray_hit, debug=False):
     hand_hit_idxs = ray_hit.hand_hit_idxs
     obj_hits = ray_hit.obj_hits
@@ -414,7 +448,7 @@ class PLModule(pl.LightningModule):
                 self.best_frame = torch.tensor(self.ray_hit.best_frame)              
         
         loss = 0.0
-        if self.args.mode == "h_intrinsic":
+        if self.args.mode == "h" or self.args.mode == "h_intrinsic":
             loss_j2d = loss_fn_h_j2d(preds, self.targets, self.conf)
             loss += loss_j2d
             self.log("loss", loss, on_step=True, on_epoch=False, prog_bar=True)
@@ -491,10 +525,16 @@ class PLModule(pl.LightningModule):
             self.log("j2d", loss_j2d, on_step=True, on_epoch=False, prog_bar=True)
             # self.log("mask_hand", loss_mask_hand, on_step=True, on_epoch=False, prog_bar=True)               
         elif self.args.mode == "o":
-            loss_j2d = loss_fn_h_j2d(preds, self.targets, self.conf, torch.tensor(self.ray_hit.valid_frames).to(device)) * 3.0
             # loss_center = loss_fn_center(preds, self.targets, self.conf)
             # loss_smooth = loss_fn_smooth(preds, self.targets, self.conf)
-            loss_contact = loss_fn_vis_contact(preds, self.targets, self.conf, self.ray_hit)  * 1.0
+            if self.conf.contact_type == "vis":
+                loss_j2d = loss_fn_h_j2d(preds, self.targets, self.conf, torch.tensor(self.ray_hit.valid_frames).to(device)) * 20.0
+                loss_contact = loss_fn_vis_contact(preds, self.targets, self.conf, self.ray_hit)  * 1.0
+            elif self.conf.contact_type == "knn":
+                loss_j2d = loss_fn_h_j2d(preds, self.targets, self.conf, torch.tensor(self.ray_hit.valid_frames).to(device)) * 100.0
+                loss_contact = loss_fn_knn_contact(preds, self.targets, self.conf)
+            else:
+                raise NotImplementedError
             loss += loss_contact + loss_j2d
             # loss += loss_j2d + loss_center + loss_smooth + loss_contact
             self.log("loss", loss, on_step=True, on_epoch=False, prog_bar=True)                        
@@ -505,8 +545,14 @@ class PLModule(pl.LightningModule):
             # self.log("cnt_occ", loss_contact_occluded, on_step=True, on_epoch=False, prog_bar=True)
 
         elif self.args.mode == "ho":
-            loss_j2d = loss_fn_h_j2d(preds, self.targets, self.conf, torch.tensor(self.ray_hit.valid_frames).to(device)) * 3.0
-            loss_contact = loss_fn_vis_contact(preds, self.targets, self.conf, self.ray_hit)
+            if self.conf.contact_type == "vis":
+                loss_j2d = loss_fn_h_j2d(preds, self.targets, self.conf, torch.tensor(self.ray_hit.valid_frames).to(device)) * 20.0
+                loss_contact = loss_fn_vis_contact(preds, self.targets, self.conf, self.ray_hit)
+            elif self.conf.contact_type == "knn":
+                loss_j2d = loss_fn_h_j2d(preds, self.targets, self.conf, torch.tensor(self.ray_hit.valid_frames).to(device)) * 100.0
+                loss_contact = loss_fn_knn_contact(preds, self.targets, self.conf)
+            else:
+                raise NotImplementedError
             # loss_center = loss_fn_center(preds, self.targets, self.conf)
             loss_smooth_pose = loss_fn_smooth_pose(preds, self.targets, self.conf)
             loss_smooth_verts = loss_fn_smooth_verts(preds, self.targets, self.conf)
@@ -542,7 +588,7 @@ class PLModule(pl.LightningModule):
                 torch_utils.toggle_parameters(val, requires_grad=False)
 
         # freeze the other model
-        if self.args.mode == "h_intrinsic":
+        if self.args.mode == "h" or self.args.mode == "h_intrinsic":
             # hand model schedule
             if step == 0:
                 print("Hand: stage 0")
@@ -550,6 +596,7 @@ class PLModule(pl.LightningModule):
                     if key in ['right', 'left']:
                         # val.hand_beta.requires_grad = True
                         val.hand_transl.requires_grad = True
+                        # val.hand_rot.requires_grad = True
                         # val.hand_scale.requires_grad = True
                 get_learnable_parameters(self)
 
