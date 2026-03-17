@@ -530,7 +530,7 @@ class run_wonder_hoi:
 
         cmd_parts = [
             f"cd {vggt_code_dir}/generator &&",
-            f"{self.conda_dir}/envs/vggsfm_tmp/bin/python scripts/align_hands_object.py",
+            f"{self.conda_dir}/envs/vggsfm_tmp/bin/python scripts/fit_hand.py",
             f"--seq_name {scene_name}",
             f"--mode {mode}",
             f"--max_frame_num 9999",
@@ -553,7 +553,7 @@ class run_wonder_hoi:
         id = f"{self.seq_config['cond_idx']:04d}"
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_hand_vis.py "
+        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_fit_hand_vis.py "
         cmd += f"--data_dir {data_dir} "
         cmd += f"--cond_index {self.seq_config['cond_idx']} "
         cmd += f"--interval {self.seq_config['frame_interval']} "
