@@ -24,6 +24,21 @@ optim_configs:
     decay_every: 50
     decay_factor: 0.5
     num_iters: 100
+  ray_hit:
+    lr: 0.01
+    decay_every: 1000
+    decay_factor: 0.5
+    num_iters: 1    
+  object_optim:
+    lr: 0.01
+    decay_every: 2000
+    decay_factor: 0.5
+    num_iters: 3000
+  hand_object_optim:
+    lr: 0.01
+    decay_every: 1000
+    decay_factor: 0.5
+    num_iters: 3000    
 
 weights:
   # hand-only

@@ -19,11 +19,21 @@ from common.xdict import xdict
 from generator.src.alignment.data import FakeDataset
 WANDB_ENABLED = False
 
-# TODO: import SaveCheckpointBeforeOptimization from fit_hand.py to avoid code duplication
+class SaveCheckpointBeforeOptimization(Callback):
+    def __init__(self, dirpath=""):
+        self.save_dir = dirpath
+        
+    def on_train_start(self, trainer, pl_module):
+        # Save the checkpoint before the very first optimization
+        if args.mode == "before":
+            trainer.save_checkpoint(f"{self.save_dir}/last.ckpt")
+            print(f"Saved {self.save_dir}/last.ckpt")
+            trainer.should_stop = True
+
 
 def main(args):
     device = "cuda"
-    data = read_data(args).to(device)
+    data = read_data(args, data_in_process=True).to(device)
     
     out_p = op.join(f"{args.out_dir}/hold_fit.aligned_{args.mode}.npy")
 
@@ -94,7 +104,7 @@ def main(args):
     out = xdict()
     for key in pl_model.models.keys():
         out[key] = pl_model.models[key]()
-    if 'sdf' in out['object']:
+    if 'object' in out and 'sdf' in out['object']:
         del out['object']['sdf']
     out = out.to("cpu").to_np()
     np.save(out_p, out)
@@ -112,7 +122,7 @@ def load_conf(args):
     config = edict(OmegaConf.to_container(config, resolve=True))
 
     if args.mode == "h":
-        conf = config["optim_configs"]["hand_optim"]
+        conf = config["optim_configs"]["hand_optim_intrinsic"]
     elif args.mode == "r":
         conf = config["optim_configs"]["ray_hit"]        
     elif args.mode == "o":
@@ -130,24 +140,17 @@ def load_conf(args):
 
 def parse_args():
     import argparse
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--seq_name", type=str, default="")
-    parser.add_argument("--colmap_k", action="store_true")
+    # parser.add_argument("--colmap_k", action="store_true")
     parser.add_argument("--mode", type=str, default="")
-    parser.add_argument('--config', type=str, default='code/confs/generic.yaml')
+    parser.add_argument('--config', type=str, default='confs/generic.yaml')
     parser.add_argument('--is_arctic', action='store_true')
-    parser.add_argument("--colmap_path", type=str, default="")
-    parser.add_argument("--object_dir", type=str, default=None)
-    parser.add_argument("--data_path", type=str, default="")
+    # parser.add_argument("--data_path", type=str, default="")
     parser.add_argument("--out_dir", type=str, default="")
+    parser.add_argument("--dataset_type", type=str, choices=["zed", "ho3d"])
     args = parser.parse_args()
     args = edict(vars(args))
-    dirs = os.listdir((args.object_dir + "/save"))
-    mesh_dir = next((item for item in dirs if 'export' in item), None)
-    args["object_mesh_f"] = (args.object_dir + "/save/" + mesh_dir + "/model.obj")
-    args["object_ckpt_f"] = (args.object_dir + "/ckpts/last.ckpt")
-    args["object_cfg_f"] = (args.object_dir + "/configs/parsed.yaml")
     return args
 
 

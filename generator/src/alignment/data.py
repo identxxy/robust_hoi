@@ -54,19 +54,17 @@ def get_hand_pc(depth_ps, mask_hand_ps, meta, device="cuda"):
         hand_pc.append(xyz_map)
     return hand_pc
 
-def read_hand_data(data, args, num_total_frames):
+def read_hand_data(data, hand_indices):
     mydata = {}
     for k, v in data.items():
-        mydata[k] = torch.FloatTensor(v)
-        assert mydata[k].shape[0] == num_total_frames, f"Data length mismatch for {k}: expected {num_total_frames}, got {mydata[k].shape[0]}"
-        mydata[k] = mydata[k][args.min_frame_num:args.max_frame_num:args.frame_interval]
+        v_tensor = torch.FloatTensor(v)
+        mydata[k] = v_tensor[hand_indices]
     return mydata
 
-def read_j2d_right_data(j2d_p, args, num_total_frames):
+def read_j2d_right_data(j2d_p, hand_indices):
     j2d_data = np.load(j2d_p, allow_pickle=True).item()
     j2d_right = j2d_data['j2d.right']
-    assert j2d_right.shape[0] == num_total_frames, f"j2d length mismatch: expected {num_total_frames}, got {j2d_right.shape[0]}"
-    j2d_right = j2d_right[args.min_frame_num:args.max_frame_num:args.frame_interval]
+    j2d_right = j2d_right[hand_indices]
     return j2d_right
 
 def get_hand_mask(mask_hand_ps):
@@ -107,7 +105,7 @@ def get_hand_depth(depth_ps, mask_hand_ps, meta, device="cuda"):
     
 
 
-def read_data(args):
+def read_data(args, data_in_process=False):
     seq_name = args.seq_name
     # load data
     if args['dataset_type'] == "ho3d":
@@ -117,21 +115,23 @@ def read_data(args):
     else:
         raise NotImplementedError(f"Dataset type {args['dataset_type']} not implemented.")
 
+    if data_in_process:
+        data_dir = f"{data_dir}/pipeline_preprocess"
+
+    
+
     im_ps = sorted(
         glob(f"{data_dir}/rgb/*.jpg")
         + glob(f"{data_dir}/rgb/*.png")
     )
-    mask_obj_ps = sorted(glob(f"{data_dir}/mask_object/*.png"))
+    mask_obj_ps = sorted(glob(f"{data_dir}/mask_obj/*.png"))
     mask_hand_ps = sorted(glob(f"{data_dir}/mask_hand/*.png"))
-    depth_ps = sorted(glob(f"{data_dir}/depth/*.png"))
-    
-    assert len(im_ps) == len(mask_hand_ps) == len(mask_obj_ps) == len(depth_ps), "Number of images, hand masks, object masks, and depth maps must be equal."
-    num_total_frames = len(im_ps)
+    if data_in_process:
+        depth_ps = sorted(glob(f"{data_dir}/depth_filtered/*.png"))
+    else:
+        depth_ps = sorted(glob(f"{data_dir}/depth/*.png"))
 
-    im_ps = im_ps[args.min_frame_num:args.max_frame_num:args.frame_interval]
-    mask_hand_ps = mask_hand_ps[args.min_frame_num:args.max_frame_num:args.frame_interval]
-    mask_obj_ps = mask_obj_ps[args.min_frame_num:args.max_frame_num:args.frame_interval]
-    depth_ps = depth_ps[args.min_frame_num:args.max_frame_num:args.frame_interval]
+    assert len(im_ps) == len(mask_hand_ps) == len(mask_obj_ps) == len(depth_ps), "Number of images, hand masks, object masks, and depth maps must be equal."
 
     im0 = Path(im_ps[0])
     intrinsic_file = str(im0.parent.parent / "meta" / f"{im0.stem}.pkl")
@@ -142,8 +142,11 @@ def read_data(args):
     
 
     meta = {}
-
-    meta['K'] = np.array(_load_pickle_compat(intrinsic_file)['camMat'])
+    
+    if data_in_process:
+        meta['K'] = np.array(_load_pickle_compat(intrinsic_file)['intrinsics'])
+    else:
+        meta['K'] = np.array(_load_pickle_compat(intrinsic_file)['camMat'])
     meta['im_paths'] = im_ps
     meta['mask_obj_paths'] = mask_obj_ps
     meta['mask_hand_paths'] = mask_hand_ps
@@ -161,16 +164,22 @@ def read_data(args):
     # )
     
     entities  = {}
-
-    j2d_p = f"{data_dir}/hands/j2d.full.npy"
-    data = np.load(
-        f"{data_dir}/hands/hold_fit.slerp.npy", allow_pickle=True
-    ).item()
+    if data_in_process:
+        j2d_p = f"{data_dir}/../hands/j2d.full.npy"
+        data = np.load(
+            f"{data_dir}/../hands/hold_fit.slerp.npy", allow_pickle=True
+        ).item()
+    else:
+        j2d_p = f"{data_dir}/hands/j2d.full.npy"
+        data = np.load(
+            f"{data_dir}/hands/hold_fit.slerp.npy", allow_pickle=True
+        ).item()
     # get the hand mask
+    hand_indices = [int(Path(p).stem) for p in im_ps]
 
     if 'right' in data:
-        data_r = read_hand_data(data['right'], args, num_total_frames)
-        j2d_right = read_j2d_right_data(j2d_p, args, num_total_frames)
+        data_r = read_hand_data(data['right'], hand_indices)
+        j2d_right = read_j2d_right_data(j2d_p, hand_indices)
         right_valid_1 = (~np.isnan(j2d_right.reshape(-1, 21*2).mean(axis=1))).astype(np.float32) # num_frames
         right_valid = np.repeat(right_valid_1[:, np.newaxis], 21, axis=1)
         j2d_right_pad = torch.FloatTensor(np.concatenate([j2d_right, right_valid[:, :, None]], axis=2))
@@ -186,16 +195,7 @@ def read_data(args):
         data_r['mask_hand.gt'] = mask_hands
         entities['right'] = data_r
     
-    if 'left' in data:
-        data_l = read_hand_data(data['left'], num_frames=num_frames)        
-        j2d_left = j2d_data['j2d.left'][:num_frames]
-        left_valid = (~np.isnan(j2d_left.reshape(-1, 21*2).mean(axis=1))).astype(np.float32)
-        left_valid = np.repeat(left_valid[:, np.newaxis], 21, axis=1)
-        j2d_left_pad = torch.FloatTensor(np.concatenate([j2d_left, left_valid[:, :, None]], axis=2))
-        
-        data_l['j2d.gt'] = j2d_left_pad
-        entities['left'] = data_l
-    
+
     mydata = xdict()
     mydata['entities'] = entities
     mydata['meta'] = meta
