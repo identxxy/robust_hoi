@@ -1767,6 +1767,7 @@ class run_wonder_hoi:
         cmd += f"--out_dir {out_dir} "
         cmd += f"--SAM3D_dir {data_dir}/SAM3D_aligned_post_process "
         cmd += f"--cond_index {self.seq_config['cond_idx']} "
+        cmd += f"--hand_mode trans "
         render_hand = str(kwargs.get("render_hand", "false")).lower() in {"1", "true", "yes", "y"}
         if render_hand:
             cmd += f"--render_hand "
@@ -1780,6 +1781,31 @@ class run_wonder_hoi:
     def _align_hand_object(self, scene_name, mode):
         out_dir = f"{vggt_code_dir}/output/{scene_name}/align_hand_object"
         result_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_joint_opt/"
+        if self.vis:
+            self.print_header(f"hoi pipeline joint optimization eval vis for {scene_name}")
+            data_dir = f"{self.dataset_dir}/{scene_name}"
+            result_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_joint_opt/"
+            out_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_joint_opt/eval_vis/"
+
+            if self.rebuild:
+                cmd = f"rm -rf {out_dir}"
+                print(cmd)
+                os.system(cmd)            
+
+            cmd = f"cd {vggt_code_dir} && "
+            cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_joint_opt_eval_vis_nvdiffrast.py "
+            cmd += f"--result_folder {result_dir} "
+            cmd += f"--out_dir {out_dir} "
+            cmd += f"--SAM3D_dir {data_dir}/SAM3D_aligned_post_process "
+            cmd += f"--cond_index {self.seq_config['cond_idx']} "
+            cmd += f"--hand_mode {mode} "
+            cmd += f"--render_hand "
+            cmd += f"--vis_gt 0 "
+        
+            print(cmd)
+            os.system(cmd)
+            return                  
+
         if self.rebuild:
             cmd = f"rm -rf {out_dir}/hold_fit.aligned_{mode}.npy && rm -rf {out_dir}mano_fit_ckpt/{mode}/"
             print(cmd)
