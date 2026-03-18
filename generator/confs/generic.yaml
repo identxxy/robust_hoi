@@ -53,7 +53,9 @@ weights:
   center: 100.0
   pose_smooth: 500.0
   verts_smooth: 20.0
+  contact_type: vis
   vis_contact: 200.0
+  knn_contact: 3.0  
   occ_contact: 20.0
   reg: 20.0
   # penetrate: 50.0

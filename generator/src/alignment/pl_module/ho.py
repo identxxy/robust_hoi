@@ -368,7 +368,7 @@ def loss_fn_penetrate(preds, targets, conf, valid_frames=None):
     else:
         hand_3ds = preds["right.v3d_obj"][valid_frames]
     sdf_obj = preds["object.sdf"]
-    sdfs = sdf_obj(hand_3ds.reshape(-1, 3)).reshape(hand_3ds.shape[0], -1, 1)
+    sdfs = sdf_obj(hand_3ds.reshape(-1, 3))[0].reshape(hand_3ds.shape[0], -1, 1)
     loss = torch.clamp(-sdfs, min=0).mean() * conf.penetrate
     return loss
 
