@@ -1777,8 +1777,7 @@ class run_wonder_hoi:
         print(cmd)
         os.system(cmd)             
 
-    def hoi_pipeline_align_hand_object_h(self, scene_name, **kwargs):
-        mode = "h"
+    def _align_hand_object(self, scene_name, mode):
         out_dir = f"{vggt_code_dir}/output/{scene_name}/align_hand_object"
         result_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_joint_opt/"
         if self.rebuild:
@@ -1797,65 +1796,17 @@ class run_wonder_hoi:
         print(cmd)
         os.system(cmd)
 
+    def hoi_pipeline_align_hand_object_h(self, scene_name, **kwargs):
+        self._align_hand_object(scene_name, "h")
+
     def hoi_pipeline_align_hand_object_r(self, scene_name, **kwargs):
-        mode = "r"
-        out_dir = f"{vggt_code_dir}/output/{scene_name}/align_hand_object"
-        result_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_joint_opt/"
-        if self.rebuild:
-            cmd = f"rm -rf {out_dir}/hold_fit.aligned_{mode}.npy && rm -rf {out_dir}mano_fit_ckpt/{mode}/"
-            print(cmd)
-            os.system(cmd)
-
-        cmd = f"cd {vggt_code_dir}/generator && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python scripts/align_hands_object.py "
-        cmd += f"--seq_name {scene_name} "
-        cmd += f"--mode {mode} "
-        cmd += f"--out_dir {out_dir} "
-        cmd += f"--result_dir {result_dir} "
-        cmd += f"--dataset_type {dataset_type} "
-
-        print(cmd)
-        os.system(cmd)    
+        self._align_hand_object(scene_name, "r")
 
     def hoi_pipeline_align_hand_object_o(self, scene_name, **kwargs):
-        mode = "o"
-        out_dir = f"{vggt_code_dir}/output/{scene_name}/align_hand_object"
-        result_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_joint_opt/"
-        if self.rebuild:
-            cmd = f"rm -rf {out_dir}/hold_fit.aligned_{mode}.npy && rm -rf {out_dir}mano_fit_ckpt/{mode}/"
-            print(cmd)
-            os.system(cmd)
-
-        cmd = f"cd {vggt_code_dir}/generator && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python scripts/align_hands_object.py "
-        cmd += f"--seq_name {scene_name} "
-        cmd += f"--mode {mode} "
-        cmd += f"--out_dir {out_dir} "
-        cmd += f"--result_dir {result_dir} "
-        cmd += f"--dataset_type {dataset_type} "
-
-        print(cmd)
-        os.system(cmd)            
+        self._align_hand_object(scene_name, "o")
 
     def hoi_pipeline_align_hand_object_ho(self, scene_name, **kwargs):
-        mode = "ho"
-        out_dir = f"{vggt_code_dir}/output/{scene_name}/align_hand_object"
-        result_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_joint_opt/"
-        if self.rebuild:
-            cmd = f"rm -rf {out_dir}/hold_fit.aligned_{mode}.npy && rm -rf {out_dir}mano_fit_ckpt/{mode}/"
-            print(cmd)
-            os.system(cmd)
-
-        cmd = f"cd {vggt_code_dir}/generator && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python scripts/align_hands_object.py "
-        cmd += f"--seq_name {scene_name} "
-        cmd += f"--mode {mode} "
-        cmd += f"--out_dir {out_dir} "
-        cmd += f"--result_dir {result_dir} "
-        cmd += f"--dataset_type {dataset_type} "
-
-        print(cmd)
-        os.system(cmd)            
+        self._align_hand_object(scene_name, "ho")
 
 
     def hoi_pipeline_reg_remaining(self, scene_name, **kwargs):
