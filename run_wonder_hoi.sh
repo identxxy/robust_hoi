@@ -72,6 +72,7 @@ python run_wonder_hoi.py --execute_list obj_process --process_list ho3d_eval_int
 python run_wonder_hoi.py --execute_list obj_process --process_list eval_sum_intrinsic eval_sum_trans eval_sum_rot --seq_list $seq_list
 
 python run_wonder_hoi.py --execute_list obj_process --process_list hoi_pipeline_align_hand_object_h hoi_pipeline_align_hand_object_r hoi_pipeline_align_hand_object_o hoi_pipeline_align_hand_object_ho --seq_list $seq_list --rebuild
+python run_wonder_hoi.py --execute_list obj_process --process_list hoi_pipeline_align_hand_object_ho --seq_list $seq_list --vis
 
 ######################################## baseline #########################################
 python run_wonder_hoi.py --execute_list baseline --process_list foundation_pose_eval_vis --seq_list $seq_list --rebuild
