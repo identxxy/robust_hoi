@@ -110,7 +110,6 @@ class run_wonder_hoi:
                 "hoi_pipeline_eval": self.hoi_pipeline_eval,
                 "hoi_pipeline_eval_vis": self.hoi_pipeline_eval_vis,
                 "hoi_pipeline_joint_opt_global": self.hoi_pipeline_joint_opt_global,
-                "hoi_pipeline_joint_opt_eval_vis": self.hoi_pipeline_joint_opt_eval_vis,
                 "hoi_pipeline_reg_remaining": self.hoi_pipeline_reg_remaining,
                 "hoi_pipeline_HY_gen": self.hoi_pipeline_HY_gen,
                 "hoi_pipeline_HY_omni_gen": self.hoi_pipeline_HY_omni_gen,
@@ -1723,11 +1722,11 @@ class run_wonder_hoi:
         cmd += f"--cond_index {self.seq_config['cond_idx']} "
         cmd += f"--hand_mode {mode} "
         cmd += f"--render_hand "
-        cmd += f"--vis_gt 1 "
+        if dataset_type != "ho3d":
+            cmd += f"--vis_gt 0 "        
         
         print(cmd)
         os.system(cmd)
-        return  
 
     def hoi_pipeline_joint_opt(self, scene_name, **kwargs):
         self.print_header(f"hoi pipeline joint optimization for {scene_name}")
@@ -1777,34 +1776,7 @@ class run_wonder_hoi:
         cmd += f"--data_dir {data_dir} "
         print(cmd)
         os.system(cmd)
-
-    def hoi_pipeline_joint_opt_eval_vis(self, scene_name, **kwargs):
-        self.print_header(f"hoi pipeline joint optimization eval vis for {scene_name}")
-        data_dir = f"{self.dataset_dir}/{scene_name}"
-        result_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_joint_opt/"
-        out_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_joint_opt/eval_vis/"
-
-        if self.rebuild:
-            cmd = f"rm -rf {out_dir}"
-            print(cmd)
-            os.system(cmd)            
-
-        cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_joint_opt_eval_vis_nvdiffrast.py "
-        cmd += f"--result_folder {result_dir} "
-        cmd += f"--out_dir {out_dir} "
-        cmd += f"--SAM3D_dir {data_dir}/SAM3D_aligned_post_process "
-        cmd += f"--cond_index {self.seq_config['cond_idx']} "
-        cmd += f"--hand_mode trans "
-        render_hand = str(kwargs.get("render_hand", "false")).lower() in {"1", "true", "yes", "y"}
-        if render_hand:
-            cmd += f"--render_hand "
-
-        if dataset_type != "ho3d":
-            cmd += f"--vis_gt 0 "
-       
-        print(cmd)
-        os.system(cmd)             
+           
 
     def _align_hand_object(self, scene_name, mode):
         out_dir = f"{vggt_code_dir}/output/{scene_name}/align_hand_object"
@@ -2272,7 +2244,6 @@ if __name__ == "__main__":
                 "hoi_pipeline_eval",
                 "hoi_pipeline_eval_vis",
                 "hoi_pipeline_joint_opt_global",
-                "hoi_pipeline_joint_opt_eval_vis",
                 "hoi_pipeline_reg_remaining",
                 "hoi_pipeline_HY_gen",
                 "hoi_pipeline_align_hand_object_h",
