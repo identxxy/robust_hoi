@@ -663,6 +663,7 @@ class PLModule(pl.LightningModule):
         elif self.args.mode == "o":
             if step == 0:
                 print("Object: stage 0")
+                self.models['right'].hand_beta.requires_grad = True
                 self.models['right'].hand_scale.requires_grad = True
                 self.models['right'].hand_transl.requires_grad = True
                 get_learnable_parameters(self)
@@ -677,6 +678,7 @@ class PLModule(pl.LightningModule):
             #         val.obj_scale.requires_grad = True
             #         val.obj_transl.requires_grad = True
             if step == 0:
+                # self.models['right'].hand_beta.requires_grad = True
                 self.models['right'].hand_scale.requires_grad = True
                 self.models['right'].hand_transl.requires_grad = True
                 # self.models['right'].hand_pose.requires_grad = True
