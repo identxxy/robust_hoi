@@ -161,7 +161,7 @@ def ensure_sealed_right_hand_mesh(verts: np.ndarray, faces: np.ndarray):
     return verts, faces.astype(np.int32)
 
 
-def build_merged_object_hand_mesh(object_mesh: trimesh.Trimesh, hand_mesh_cam: dict, c2o_scaled: np.ndarray):
+def build_merged_object_hand_mesh(object_mesh: trimesh.Trimesh, hand_mesh_cam: dict, c2o_with_scale: np.ndarray):
     obj_verts = np.asarray(object_mesh.vertices, dtype=np.float32)
     obj_faces = np.asarray(object_mesh.faces, dtype=np.int32)
     obj_colors = _mesh_vertex_colors(object_mesh)
@@ -169,7 +169,7 @@ def build_merged_object_hand_mesh(object_mesh: trimesh.Trimesh, hand_mesh_cam: d
     hand_verts_cam, hand_faces = ensure_sealed_right_hand_mesh(
         hand_mesh_cam["vertices"], hand_mesh_cam["faces"]
     )
-    hand_verts_obj = (c2o_scaled[:3, :3] @ hand_verts_cam.T).T + c2o_scaled[:3, 3]
+    hand_verts_obj = (c2o_with_scale[:3, :3] @ hand_verts_cam.T).T + c2o_with_scale[:3, 3]
     hand_verts_obj = hand_verts_obj.astype(np.float32)
 
     merged_verts = np.concatenate([obj_verts, hand_verts_obj], axis=0)
@@ -188,9 +188,9 @@ def _build_render_frames(
     valid_flags,
     gt_valid_flags,
     data_preprocess_dir: Path,
-    o2c_all,
+    o2c_with_scale,
     mesh_obj: trimesh.Trimesh,
-    c2o_scaled,
+    c2o_with_scale,
     render_hand: bool,
 ):
     frames = []
@@ -213,12 +213,12 @@ def _build_render_frames(
             "frame_idx": int(frame_idx),
             "image": image,
             "K": K,
-            "pose_o2c": o2c_all[local_idx],
+            "pose_o2c": o2c_with_scale[local_idx],
         }
         if render_hand:
             hand_mesh_cam = load_hand_mesh_for_frame(data_preprocess_dir, int(frame_idx))
             if hand_mesh_cam is not None:
-                merged_mesh = build_merged_object_hand_mesh(mesh_obj, hand_mesh_cam, c2o_scaled[local_idx])
+                merged_mesh = build_merged_object_hand_mesh(mesh_obj, hand_mesh_cam, c2o_with_scale[local_idx])
                 frame["mesh_tensors"] = make_mesh_tensors(merged_mesh, device="cuda")
         frames.append(frame)
     return frames
@@ -257,9 +257,9 @@ def main(args):
         )
 
     c2o = np.asarray(image_info["c2o"], dtype=np.float64)
-    c2o_scaled = c2o.copy()
-    c2o_scaled[:, :3, 3] *= scale
-    o2c_all = np.linalg.inv(c2o_scaled)
+    c2o_with_scale = c2o.copy()
+    c2o_with_scale[:, :3, 3] *= scale
+    o2c_with_scale = np.linalg.inv(c2o_with_scale)
     
     if args.mesh_type == "sam3d":
         mesh_path = get_sam3d_mesh_path(sam3d_dir, args.cond_index)
@@ -287,9 +287,9 @@ def main(args):
         valid_flags=valid_flags,
         gt_valid_flags=gt_valid_flags,
         data_preprocess_dir=data_preprocess_dir,
-        o2c_all=o2c_all,
+        o2c_with_scale=o2c_with_scale,
         mesh_obj=mesh_obj,
-        c2o_scaled=c2o_scaled,
+        c2o_with_scale=c2o_with_scale,
         render_hand=bool(args.render_hand),
     )
 
@@ -317,8 +317,6 @@ def parse_args():
     parser.add_argument("--alpha", type=float, default=0.8, help="Overlay weight for rendered normals")
     parser.add_argument("--vis_gt", type=int, default=1, help="Use GT-valid filtering (1) or not (0)")
     parser.add_argument("--render_hand", dest="render_hand", action="store_true", help="Render sealed right-hand mesh together with the object mesh")
-    parser.add_argument("--no_render_hand", dest="render_hand", action="store_false", help="Render only the object mesh")
-    parser.set_defaults(render_hand=True)
     parser.add_argument("--mesh_type", type=str, default="neus", choices=["sam3d", "neus"], help="Mesh source to use: 'neus' (default) or 'sam3d'")
     return parser.parse_args()
 
