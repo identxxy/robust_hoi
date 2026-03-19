@@ -69,7 +69,10 @@ class MANOParameters(nn.Module):
             rasterizer=raster_settings_silhouette,
             shader=SoftSilhouetteShader()
         )
-        self.o2c = torch.tensor(meta["o2c"]).to("cuda")
+        
+        self.o2c = None
+        if "o2c" in meta:
+            self.o2c = torch.tensor(meta["o2c"]).to("cuda")
 
         _contact_zones_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "body_models", "contact_zones.pkl")
         with open(_contact_zones_path, "rb") as f:
@@ -112,12 +115,16 @@ class MANOParameters(nn.Module):
         h2c_mat[:, :3, 3] = self.hand_transl
         h2c_mat = h2c_mat * self.hand_scale # scale the hand
         h2c_mat[:, 3, 3] = 1
-        h2o_mat = torch.inverse(self.o2c) @ h2c_mat
+        
 
         j3d_cam = transform_points(j3d_can, h2c_mat)
         v3d_cam = transform_points(v3d_can, h2c_mat)
-        j3d_obj = transform_points(j3d_can, h2o_mat)
-        v3d_obj = transform_points(v3d_can, h2o_mat)
+        j3d_obj = None
+        v3d_obj = None
+        if self.o2c != None:
+            h2o_mat = torch.inverse(self.o2c) @ h2c_mat
+            j3d_obj = transform_points(j3d_can, h2o_mat)
+            v3d_obj = transform_points(v3d_can, h2o_mat)
 
 
 

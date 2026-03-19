@@ -532,12 +532,13 @@ class run_wonder_hoi:
         os.system(cmd)
 
     def fit_hand_step(self, scene_name, mode, output_dir, **kwargs):
-
+        data_dir = f"{self.dataset_dir}/{scene_name}"
         cmd_parts = [
             f"cd {vggt_code_dir}/generator &&",
             f"{self.conda_dir}/envs/vggsfm_tmp/bin/python scripts/fit_hand.py",
             f"--seq_name {scene_name}",
             f"--mode {mode}",
+            f"--data_dir {data_dir}",
             f"--out_dir {output_dir}",
         ]
         if "num_frames" in kwargs:

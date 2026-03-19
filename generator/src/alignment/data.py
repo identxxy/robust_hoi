@@ -107,12 +107,7 @@ def get_hand_depth(depth_ps, mask_hand_ps, meta, device="cuda"):
 def read_data(args):
     seq_name = args.seq_name
     # load data
-    if args['dataset_type'] == "ho3d":
-        data_dir = f"./data/train/{seq_name}"
-    elif args['dataset_type'] == "zed":
-        data_dir = args['out_dir']
-    else:
-        raise NotImplementedError(f"Dataset type {args['dataset_type']} not implemented.")
+    data_dir = f"{args['data_dir']}"
 
     im_ps = sorted(
         glob(f"{data_dir}/rgb/*.jpg")

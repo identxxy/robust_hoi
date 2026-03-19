@@ -35,7 +35,7 @@ for device in "${!device_sequences[@]}"; do
 
     CUDA_VISIBLE_DEVICES=$device python run_wonder_hoi.py \
       --execute_list hand_pose_postprocess \
-      --process_list fit_hand_intrinsic fit_hand_trans fit_hand_rot \
+      --process_list fit_hand_intrinsic fit_hand_trans \
       --seq_list $sequences --rebuild            
 
     CUDA_VISIBLE_DEVICES=$device python run_wonder_hoi.py \
