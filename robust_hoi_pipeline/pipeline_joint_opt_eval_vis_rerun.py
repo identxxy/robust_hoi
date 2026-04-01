@@ -691,8 +691,9 @@ def load_hand_predictions(results_dir, hand_mode, frame_indices, valid_flags, de
     h2c_transls_np = np.asarray(h2c_transls)
     h2c_rots_t = torch.as_tensor(h2c_rots, device=device, dtype=torch.float32)
 
+    from confs.sequence_config import body_models_dir
     mano_layer = smplx.create(
-        model_path='./body_models/MANO_RIGHT.pkl',
+        model_path=f'{body_models_dir}/MANO_RIGHT.pkl',
         model_type="mano", use_pca=False, is_rhand=True,
     ).to(torch.device(device))
 

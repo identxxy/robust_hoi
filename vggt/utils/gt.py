@@ -60,10 +60,11 @@ def load_data(seq_name, get_selected_fids_fn=None):
     # load in opencv format
 
     device = "cuda:0"
+    from confs.sequence_config import body_models_dir, gt_processed_dir
     human_model = MANO(
-        "./body_models", is_rhand=True, flat_hand_mean=False, use_pca=False
+        body_models_dir, is_rhand=True, flat_hand_mean=False, use_pca=False
     ).to(device)
-    data = torch.load(f"./ho3d_v3/processed/{seq_name}.pt")
+    data = torch.load(f"{gt_processed_dir}/{seq_name}.pt")
     mano_layer = build_mano_aa(True, flat_hand=False)
 
     fnames = data["fnames"]

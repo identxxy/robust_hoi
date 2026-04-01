@@ -203,7 +203,8 @@ def load_gt_data(seq_name: str, max_frames: int = None):
 
     # Load all frames
     def get_all_fids():
-        data = torch.load(f"./ho3d_v3/processed/{seq_name}.pt")
+        from confs.sequence_config import gt_processed_dir
+        data = torch.load(f"{gt_processed_dir}/{seq_name}.pt")
         num_frames = data["hand_pose"].shape[0]
         fids = list(range(num_frames))
         if max_frames is not None:

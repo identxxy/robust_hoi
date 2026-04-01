@@ -1331,7 +1331,8 @@ def _get_finger_contact_idx():
     global _FINGER_CONTACT_IDX
     if _FINGER_CONTACT_IDX is None:
         import pickle as pkl
-        pkl_path = Path(__file__).parent.parent / "body_models" / "contact_zones.pkl"
+        from confs.sequence_config import body_models_dir
+        pkl_path = Path(body_models_dir) / "contact_zones.pkl"
         with open(pkl_path, "rb") as f:
             contact_zones = pkl.load(f)["contact_zones"]
         contact_idx = np.array([item for sublist in contact_zones.values() for item in sublist])
@@ -2188,7 +2189,8 @@ def print_image_info_stats(image_info, invalid_cnt):
 
 def register_remaining_frames(image_info, preprocessed_data, output_dir: Path, cond_idx: int,
                                neus_ckpt=None, neus_total_steps=0, sam3d_root_dir=None,
-                               neus_mesh_path=None, optimize_3D_prior=False):
+                               neus_mesh_path=None, optimize_3D_prior=False,
+                               max_register_frames: int = -1):
 
     from robust_hoi_pipeline.frame_management import (
         find_next_frame,
@@ -2277,6 +2279,9 @@ def register_remaining_frames(image_info, preprocessed_data, output_dir: Path, c
         print(f"Loaded NeuS mesh: {len(neus_mesh_trimesh.vertices)} vertices")
 
     while image_info_work["registered"].sum() + image_info_work["invalid"].sum() < num_frames:
+        if 0 < max_register_frames <= image_info_work["registered"].sum():
+            print(f"[register_remaining_frames] Reached max_register_frames={max_register_frames}, stopping early.")
+            break
         next_frame_idx = find_next_frame(image_info_work)
         if next_frame_idx is None:
             break
@@ -2622,6 +2627,7 @@ def main(args):
             neus_ckpt=neus_ckpt, neus_total_steps=neus_total_steps,
             sam3d_root_dir=sam3d_root_dir, neus_mesh_path=neus_init_mesh,
             optimize_3D_prior=args.optimize_3D_prior,
+            max_register_frames=args.max_register_frames,
         )
     finally:
         sys.stdout = orig_stdout
@@ -2646,6 +2652,8 @@ if __name__ == "__main__":
                         help="Disable point-to-plane loss and skip NeuS mesh loading")
     parser.add_argument("--vis_thresh", type=float, default=0.3,
                         help="Visibility score threshold for filtering tracks in the condition frame")
+    parser.add_argument("--max_register_frames", type=int, default=-1,
+                        help="If > 0, stop after registering this many frames (for quick testing)")
 
     args = parser.parse_args()
     main(args)

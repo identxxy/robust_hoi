@@ -3,6 +3,7 @@ import json
 import numpy as np
 import torch
 from smplx import MANO
+from confs.sequence_config import body_models_dir
 
 from common.mesh import Mesh
 
@@ -31,7 +32,7 @@ class MANODecimator:
         return verts_sub
 
 
-MODEL_DIR = "./body_models"
+MODEL_DIR = body_models_dir
 
 SEAL_FACES_R = [
     [120, 108, 778],
@@ -118,11 +119,11 @@ def build_layers(device=None):
     return layers
 
 
-MANO_MODEL_DIR = "./body_models"
+MANO_MODEL_DIR = body_models_dir
 SMPLX_MODEL_P = {
-    "male": "./body_models/smplx/SMPLX_MALE.npz",
-    "female": "./body_models/smplx/SMPLX_FEMALE.npz",
-    "neutral": "./body_models/smplx/SMPLX_NEUTRAL.npz",
+    "male": f"{body_models_dir}/smplx/SMPLX_MALE.npz",
+    "female": f"{body_models_dir}/smplx/SMPLX_FEMALE.npz",
+    "neutral": f"{body_models_dir}/smplx/SMPLX_NEUTRAL.npz",
 }
 
 

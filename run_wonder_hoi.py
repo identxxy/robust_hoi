@@ -7,7 +7,7 @@ import random
 import numpy as np
 from PIL import Image
 
-from confs.sequence_config import sequences, sequence_name_list, dataset_type, vggt_code_dir, home_dir, conda_dir, dataset_dir
+from confs.sequence_config import sequences, sequence_name_list, dataset_type, vggt_code_dir, home_dir, conda_dir, dataset_dir, cuda_dir, output_baseline_dir
 
 
 class run_wonder_hoi:
@@ -19,6 +19,7 @@ class run_wonder_hoi:
         self.process_list = args.process_list
         self.dataset_dir = dataset_dir
         self.reconstruction_dir = args.reconstruction_dir
+        self.output_root = getattr(args, 'output_root', None) or f"{vggt_code_dir}/output"
         self.rebuild = args.rebuild
         self.vis = args.vis
         self.eval = args.eval
@@ -32,6 +33,8 @@ class run_wonder_hoi:
                 self.conda_dir = f"{home_dir}/anaconda3"
             else:
                 self.conda_dir = f"{home_dir}/miniconda3"
+        rhoi_env = os.getenv("RHOI_ENV", "rhoi")
+        self.rhoi_python = f"{self.conda_dir}/envs/{rhoi_env}/bin/python"
         self.extras = extras
         self.process_mapping = {
             "data_read": {
@@ -136,6 +139,22 @@ class run_wonder_hoi:
                 "gt_eval_vis": self.gt_eval_vis,
             },
         }
+
+    def _output_dir(self, scene_name):
+        return f"{self.output_root}/{scene_name}"
+
+    def _neus_env_prefix(self):
+        """Build shell env prefix for neus commands (CUDA + conda compiler)."""
+        prefix = os.path.dirname(os.path.dirname(self.rhoi_python))
+        parts = [f"cd {vggt_code_dir}"]
+        path_dirs = [f"{prefix}/bin"]
+        if cuda_dir:
+            path_dirs.insert(0, f"{cuda_dir}/bin")
+            parts.append(f"export CUDA_HOME={cuda_dir}")
+        parts.insert(1, f"export PATH={':'.join(path_dirs)}:$PATH")
+        parts.append(f"export CC={prefix}/bin/x86_64-conda-linux-gnu-gcc")
+        parts.append(f"export CXX={prefix}/bin/x86_64-conda-linux-gnu-g++")
+        return " && ".join(parts) + " && "
 
     def run(self):
         for exe in self.execute_list:
@@ -452,7 +471,7 @@ class run_wonder_hoi:
         out_dir = f"{self.dataset_dir}/{scene_name}/hands"
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python ./interpolate.py "
+        cmd += f"{self.rhoi_python} ./interpolate.py "
         cmd += f" --dataset_dir {data_dir} "
         cmd += f" --out_dir {out_dir} "
         print(f"{cmd}")
@@ -507,7 +526,7 @@ class run_wonder_hoi:
     def fit_hand_viewer(self, scene_name, **kwargs):
         cmd = ""
         cmd += "cd viewer && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python viewer.py "
+        cmd += f"{self.rhoi_python} viewer.py "
         cmd += f"--sequence_folder {self.dataset_dir}/{scene_name} "
         cmd += f"--reconstruction_folder {self.reconstruction_dir}/{scene_name} "
         cmd += f"--mano_model_folder {self.code_dir}/body_models/ "
@@ -535,7 +554,7 @@ class run_wonder_hoi:
         data_dir = f"{self.dataset_dir}/{scene_name}"
         cmd_parts = [
             f"cd {vggt_code_dir}/generator &&",
-            f"{self.conda_dir}/envs/vggsfm_tmp/bin/python scripts/fit_hand.py",
+            f"{self.rhoi_python} scripts/fit_hand.py",
             f"--seq_name {scene_name}",
             f"--mode {mode}",
             f"--data_dir {data_dir}",
@@ -557,7 +576,7 @@ class run_wonder_hoi:
         id = f"{self.seq_config['cond_idx']:04d}"
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_fit_hand_vis.py "
+        cmd += f"{self.rhoi_python} robust_hoi_pipeline/pipeline_fit_hand_vis.py "
         cmd += f"--data_dir {data_dir} "
         cmd += f"--cond_index {self.seq_config['cond_idx']} "
         cmd += f"--interval {self.seq_config['frame_interval']} "
@@ -742,7 +761,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {home_dir}/Documents/project/vggt/ && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python get_condition_id_{strategy}.py "
+        cmd += f"{self.rhoi_python} get_condition_id_{strategy}.py "
         cmd += f"--scene_dir {data_dir} "
         cmd += f"--frame_interval {self.seq_config['frame_interval']} "
         cmd += f"--out_dir {out_dir} "
@@ -849,7 +868,7 @@ class run_wonder_hoi:
 
         # python example.py --image_file $IMAGE_FILE --output_dir $scene_output_dir
         cmd = f"cd {home_dir}/Documents/project/vggt && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python align_SAM3D_mask.py "
+        cmd += f"{self.rhoi_python} align_SAM3D_mask.py "
         cmd += f"--data-dir {self.dataset_dir}/{scene_name}/ "
         cmd += f"--hand-pose-suffix trans "
         cmd += f"--cond-index {self.seq_config['cond_idx']} "
@@ -873,7 +892,7 @@ class run_wonder_hoi:
 
         # python example.py --image_file $IMAGE_FILE --output_dir $scene_output_dir
         cmd = f"cd {home_dir}/Documents/project/vggt && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python align_SAM3D_pts.py "
+        cmd += f"{self.rhoi_python} align_SAM3D_pts.py "
         cmd += f"--data-dir {self.dataset_dir}/{scene_name}/ "
         # cmd += f"--cond-index {int(self.seq_config['cond_idx']/self.seq_config['frame_interval']) * self.seq_config['frame_interval']} "
         cmd += f"--cond-index {self.seq_config['cond_idx']} "
@@ -893,7 +912,7 @@ class run_wonder_hoi:
 
         if self.vis:
             cmd = f"cd {home_dir}/Documents/project/vggt && "
-            cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python SAM3D_post_process_vis.py "
+            cmd += f"{self.rhoi_python} SAM3D_post_process_vis.py "
             cmd += f"--out-dir {dst_dir} "       
             print(cmd)
             os.system(cmd)
@@ -905,7 +924,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {home_dir}/Documents/project/vggt && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python SAM3D_post_process.py "
+        cmd += f"{self.rhoi_python} SAM3D_post_process.py "
         cmd += f"--src-dir {src_dir} "
         cmd += f"--dst-dir {dst_dir} "       
         print(cmd)
@@ -1119,7 +1138,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && " \
-            f"{self.conda_dir}/envs/vggsfm_tmp/bin/python depth_to_ply.py " \
+            f"{self.rhoi_python} depth_to_ply.py " \
             f"--input_dir {self.dataset_dir}/{scene_name} " \
             f"--ply_interval 10 --use_rgb"
         print(cmd)
@@ -1351,7 +1370,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python demo_colmap.py "
+        cmd += f"{self.rhoi_python} demo_colmap.py "
         cmd += f"--scene_dir {data_dir} "
         cmd += f"--max_query_pts 200 --query_frame_num 0 --vis_thresh 0.40 --max_reproj_error 3 --shared_camera "
         cmd += f"--output_dir {out_dir} --use_calibrated_intrinsic --max_frame_num 100 --frame_interval 1 --dataset_type {dataset_type}"
@@ -1368,7 +1387,7 @@ class run_wonder_hoi:
 
         if self.vis:
             cmd = f"cd {vggt_code_dir} && "
-            cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python viewer/viewer_step.py "
+            cmd += f"{self.rhoi_python} viewer/viewer_step.py "
             cmd += f"--result_folder {out_dir}/results/ "
             cmd += f"--vis_only_register "
             cmd += f"--vis_only_keyframes "            
@@ -1384,7 +1403,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi.py "
+        cmd += f"{self.rhoi_python} robust_hoi.py "
         cmd += f"--scene_dir {data_dir} "
         cmd += f"--max_frame_num {frame_number * frame_interval -1} --frame_interval {frame_interval} --dataset_type {dataset_type} "
         cmd += f"--output_dir {out_dir} "
@@ -1402,7 +1421,7 @@ class run_wonder_hoi:
 
         if self.vis:
             cmd = f"cd {vggt_code_dir} && "
-            cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python viewer/viewer_step.py "
+            cmd += f"{self.rhoi_python} viewer/viewer_step.py "
             cmd += f"--result_folder {out_dir}/../results/ "
             cmd += f"--vis_only_register "
             cmd += f"--vis_only_keyframes "            
@@ -1418,7 +1437,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python align_gen_3d.py "
+        cmd += f"{self.rhoi_python} align_gen_3d.py "
         cmd += f"--input_dir {data_dir} "
         cmd += f"--output_dir {out_dir} "
         cmd += f"--init_pose_image_idx {int(self.seq_config['cond_idx'] / self.seq_config['frame_interval'])} "
@@ -1437,7 +1456,7 @@ class run_wonder_hoi:
 
         if self.vis:
             cmd = f"cd {vggt_code_dir} && "
-            cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python viewer/viewer_step.py "
+            cmd += f"{self.rhoi_python} viewer/viewer_step.py "
             cmd += f"--result_folder {out_dir}/../results/ "
             cmd += f"--vis_only_register "
             cmd += f"--vis_only_keyframes "            
@@ -1453,7 +1472,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python align_gen_3d_omni.py "
+        cmd += f"{self.rhoi_python} align_gen_3d_omni.py "
         cmd += f"--keyframe_dir {keyframe_dir} "
         cmd += f"--gen3d_aligned_dir {gen3d_aligned_dir} "
         cmd += f"--output_dir {out_dir} "
@@ -1470,7 +1489,7 @@ class run_wonder_hoi:
 
         cmd = "export CC=gcc-11 && export CXX=g++-11 && export CUDAHOSTCXX=g++-11 &&"
         cmd += f"cd {vggt_code_dir}/third_party/instant-nsr-pl && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python launch.py "
+        cmd += f"{self.rhoi_python} launch.py "
         cmd += f"--config configs/neus-mixed.yaml "
         cmd += f"--train " # or --test
         cmd += f"dataset.root_dir={result_dir} "
@@ -1490,7 +1509,7 @@ class run_wonder_hoi:
 
         if self.vis:
             cmd = f"cd {vggt_code_dir} && "
-            cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python viewer_pose.py "
+            cmd += f"{self.rhoi_python} viewer_pose.py "
             cmd += f"--result_folder {result_dir} "
             print(cmd)
             os.system(cmd)
@@ -1502,7 +1521,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python eval.py "
+        cmd += f"{self.rhoi_python} eval.py "
         cmd += f"--result_folder {result_dir} "
         cmd += f"--out_dir {out_dir} "
         cmd += f"--hand_fit_mode {hand_fit_mode}"  # choices: intrinsic, trans, rot
@@ -1552,7 +1571,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_data_preprocess.py "
+        cmd += f"{self.rhoi_python} robust_hoi_pipeline/pipeline_data_preprocess.py "
         cmd += f"--data_dir {data_dir} "
         cmd += f"--output_dir {out_dir} "
         cmd += f"--start 0 --end {frame_number * frame_interval - 1} --interval {frame_interval} "
@@ -1564,22 +1583,21 @@ class run_wonder_hoi:
         self.print_header(f"hoi pipeline sam3d neus initialization for {scene_name}")
         id = f"{self.seq_config['cond_idx']:04d}"
         data_dir = f"{self.dataset_dir}/{scene_name}"
-        result_dir = f"{vggt_code_dir}/output/{scene_name}/"
+        result_dir = f"{self._output_dir(scene_name)}/"
         out_dir = f"{self.dataset_dir}/{scene_name}/SAM3D_aligned_post_process/{id}/neus/"
 
         if self.rebuild:
             cmd = f"rm -rf {out_dir}"
             print(cmd)
             os.system(cmd)
-        
-        CONDA_PREFIX = f"{self.conda_dir}/envs/vggsfm_tmp"
-        cmd = f'''cd {vggt_code_dir} && export PATH={CONDA_PREFIX}/bin:$PATH && export CC={CONDA_PREFIX}/bin/x86_64-conda-linux-gnu-gcc &&  export CXX={CONDA_PREFIX}/bin/x86_64-conda-linux-gnu-g++ && '''
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_neus_init.py "
+
+        cmd = self._neus_env_prefix()
+        cmd += f"{self.rhoi_python} robust_hoi_pipeline/pipeline_neus_init.py "
         cmd += f"--data_dir {data_dir} "
         cmd += f"--result_dir {result_dir} "
         cmd += f"--output_dir {out_dir} "
         cmd += f"--cond_index {self.seq_config['cond_idx']} "
-        cmd += f"--max_steps 3000 "
+        cmd += f"--max_steps {int(kwargs.get('max_steps', 3000))} "
         cmd += f"--robust_hoi_weight 0.0 " # set to 0.0 to disable robust hoi in neus initialization
         cmd += f"--sam3d_weight 1.0 " # only run sam3d neus initialization without robust hoi
         print(cmd)
@@ -1596,7 +1614,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python3 robust_hoi_pipeline/pipeline_get_corres.py "
+        cmd += f"{self.rhoi_python}3 robust_hoi_pipeline/pipeline_get_corres.py "
         cmd += f"--data_dir {data_dir} "
         cmd += f"--out_dir {out_dir} "
         cmd += f"--cond_index {self.seq_config['cond_idx']} "
@@ -1615,7 +1633,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_eval_corres.py "
+        cmd += f"{self.rhoi_python} robust_hoi_pipeline/pipeline_eval_corres.py "
         cmd += f"--data_dir {data_dir} "
         cmd += f"--corres_dir {corres_dir} "
         cmd += f"--out_dir {out_dir} "
@@ -1626,22 +1644,22 @@ class run_wonder_hoi:
     def hoi_pipeline_neus_init(self, scene_name, **kwargs):
         self.print_header(f"hoi pipeline neus initialization for {scene_name}")
         data_dir = f"{self.dataset_dir}/{scene_name}"
-        result_dir = f"{vggt_code_dir}/output/{scene_name}/"
-        out_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_neus_init"
+        result_root = kwargs.get("result_root", self.output_root)
+        result_dir = f"{result_root}/{scene_name}/"
+        out_dir = f"{self._output_dir(scene_name)}/pipeline_neus_init"
 
         if self.rebuild:
             cmd = f"rm -rf {out_dir}"
             print(cmd)
             os.system(cmd)
-        
-        CONDA_PREFIX = f"{self.conda_dir}/envs/vggsfm_tmp"
-        cmd = f'''cd {vggt_code_dir} && export PATH={CONDA_PREFIX}/bin:$PATH && export CC={CONDA_PREFIX}/bin/x86_64-conda-linux-gnu-gcc &&  export CXX={CONDA_PREFIX}/bin/x86_64-conda-linux-gnu-g++ && '''
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_neus_init.py "
+
+        cmd = self._neus_env_prefix()
+        cmd += f"{self.rhoi_python} robust_hoi_pipeline/pipeline_neus_init.py "
         cmd += f"--data_dir {data_dir} "
         cmd += f"--output_dir {out_dir} "
         cmd += f"--result_dir {result_dir}/ "
         cmd += f"--cond_index {self.seq_config['cond_idx']} "
-        cmd += f"--max_steps 10000 "
+        cmd += f"--max_steps {int(kwargs.get('max_steps', 10000))} "
         cmd += f"--robust_hoi_weight 1.0 " # set to 0.0 to disable robust hoi in neus initialization
         cmd += f"--sam3d_weight 0.0 " # only run sam3d neus initialization without robust hoi
         if "max_registered_frames" in kwargs:
@@ -1652,8 +1670,9 @@ class run_wonder_hoi:
     def hoi_pipeline_neus_global(self, scene_name, **kwargs):
         self.print_header(f"hoi pipeline neus global for {scene_name}")
         data_dir = f"{self.dataset_dir}/{scene_name}"
-        result_dir = f"{vggt_code_dir}/output/{scene_name}/"
-        out_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_neus_global"
+        result_root = kwargs.get("result_root", self.output_root)
+        result_dir = f"{result_root}/{scene_name}/"
+        out_dir = f"{self._output_dir(scene_name)}/pipeline_neus_global"
 
         export_only = str(kwargs.get("export_only", "")).lower() in {"1", "true", "yes"}
 
@@ -1661,15 +1680,14 @@ class run_wonder_hoi:
             cmd = f"rm -rf {out_dir}"
             print(cmd)
             os.system(cmd)
-        
-        CONDA_PREFIX = f"{self.conda_dir}/envs/vggsfm_tmp"
-        cmd = f'''cd {vggt_code_dir} && export PATH={CONDA_PREFIX}/bin:$PATH && export CC={CONDA_PREFIX}/bin/x86_64-conda-linux-gnu-gcc &&  export CXX={CONDA_PREFIX}/bin/x86_64-conda-linux-gnu-g++ && '''
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_neus_init.py "
+
+        cmd = self._neus_env_prefix()
+        cmd += f"{self.rhoi_python} robust_hoi_pipeline/pipeline_neus_init.py "
         cmd += f"--data_dir {data_dir} "
         cmd += f"--output_dir {out_dir} "
         cmd += f"--result_dir {result_dir}/ "
         cmd += f"--cond_index {self.seq_config['cond_idx']} "
-        cmd += f"--max_steps 20000 "
+        cmd += f"--max_steps {int(kwargs.get('max_steps', 20000))} "
         cmd += f"--robust_hoi_weight 1.0 " # set to 0.0 to disable robust hoi in neus initialization
         cmd += f"--sam3d_weight 0.0 " # only run sam3d neus initialization without robust hoi
         # cmd += f"--gt_pose "
@@ -1683,7 +1701,7 @@ class run_wonder_hoi:
     def hoi_pipeline_eval(self, scene_name, **kwargs):
         self.print_header(f"hoi pipeline joint optimization for {scene_name}")
         data_dir = f"{self.dataset_dir}/{scene_name}"
-        out_dir = f"{vggt_code_dir}/output/{scene_name}"
+        out_dir = self._output_dir(scene_name)
 
         if self.rebuild:
             cmd = f"rm -rf {out_dir}/pipeline_joint_opt/eval"
@@ -1691,7 +1709,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_joint_opt_eval.py "
+        cmd += f"{self.rhoi_python} robust_hoi_pipeline/pipeline_joint_opt_eval.py "
         cmd += f"--result_folder {out_dir}/pipeline_joint_opt/ "
         cmd += f"--out_dir {out_dir}/pipeline_joint_opt/eval/ "
         cmd += f"--SAM3D_dir {data_dir}/SAM3D_aligned_post_process "
@@ -1702,13 +1720,11 @@ class run_wonder_hoi:
 
     def hoi_pipeline_eval_vis(self, scene_name, **kwargs):
         mode = "ho"
-        out_dir = f"{vggt_code_dir}/output/{scene_name}/align_hand_object"
-        result_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_joint_opt/"
 
         self.print_header(f"hoi pipeline joint optimization eval vis for {scene_name}")
         data_dir = f"{self.dataset_dir}/{scene_name}"
-        result_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_joint_opt/"
-        out_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_joint_opt/eval_vis/"
+        result_dir = f"{self._output_dir(scene_name)}/pipeline_joint_opt/"
+        out_dir = f"{self._output_dir(scene_name)}/pipeline_joint_opt/eval_vis/"
 
         if self.rebuild:
             cmd = f"rm -rf {out_dir}"
@@ -1716,7 +1732,7 @@ class run_wonder_hoi:
             os.system(cmd)            
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_joint_opt_eval_vis_nvdiffrast.py "
+        cmd += f"{self.rhoi_python} robust_hoi_pipeline/pipeline_joint_opt_eval_vis_nvdiffrast.py "
         cmd += f"--result_folder {result_dir} "
         cmd += f"--out_dir {out_dir} "
         cmd += f"--SAM3D_dir {data_dir}/SAM3D_aligned_post_process "
@@ -1732,12 +1748,12 @@ class run_wonder_hoi:
     def hoi_pipeline_joint_opt(self, scene_name, **kwargs):
         self.print_header(f"hoi pipeline joint optimization for {scene_name}")
         data_dir = f"{self.dataset_dir}/{scene_name}"
-        out_dir = f"{vggt_code_dir}/output/{scene_name}"
+        out_dir = self._output_dir(scene_name)
         id = f"{self.seq_config['cond_idx']:04d}"
 
         if self.vis:
             cmd = f"cd {vggt_code_dir} && "
-            cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_joint_opt_vis.py "
+            cmd += f"{self.rhoi_python} robust_hoi_pipeline/pipeline_joint_opt_vis.py "
             cmd += f"--data_dir {data_dir} "
             cmd += f"--output_dir {out_dir} "
             cmd += f"--cond_index {self.seq_config['cond_idx']} "
@@ -1753,18 +1769,23 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_joint_opt.py "
+        cmd += f"{self.rhoi_python} robust_hoi_pipeline/pipeline_joint_opt.py "
         cmd += f"--data_dir {data_dir} "
         cmd += f"--output_dir {out_dir} "
         cmd += f"--cond_index {self.seq_config['cond_idx']} "
-        cmd += f"--optimize_3D_prior "
+        if not kwargs.get("no_optimize_3D_prior", False):
+            cmd += f"--optimize_3D_prior "
+        if "max_register_frames" in kwargs:
+            cmd += f"--max_register_frames {int(kwargs['max_register_frames'])} "
+        if "neus_init_steps" in kwargs:
+            cmd += f"--neus_init_steps {int(kwargs['neus_init_steps'])} "
         print(cmd)
         os.system(cmd)
 
     def hoi_pipeline_joint_opt_global(self, scene_name, **kwargs):
         self.print_header(f"hoi pipeline global joint optimization for {scene_name}")
         data_dir = f"{self.dataset_dir}/{scene_name}"
-        out_dir = f"{vggt_code_dir}/output/{scene_name}"
+        out_dir = self._output_dir(scene_name)
 
         if self.rebuild:
             cmd = f"rm -rf {out_dir}/pipeline_joint_opt/9999"
@@ -1772,7 +1793,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_joint_opt_global.py "
+        cmd += f"{self.rhoi_python} robust_hoi_pipeline/pipeline_joint_opt_global.py "
         cmd += f"--result_dir {out_dir} "
         cmd += f"--data_dir {data_dir} "
         print(cmd)
@@ -1780,14 +1801,14 @@ class run_wonder_hoi:
            
 
     def _align_hand_object(self, scene_name, mode):
-        out_dir = f"{vggt_code_dir}/output/{scene_name}/align_hand_object"
-        result_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_joint_opt/"
+        out_dir = f"{self._output_dir(scene_name)}/align_hand_object"
+        result_dir = f"{self._output_dir(scene_name)}/pipeline_joint_opt/"
         data_dir = f"{self.dataset_dir}/{scene_name}"
         if self.vis:
             self.print_header(f"hoi pipeline joint optimization eval vis for {scene_name}")
             data_dir = f"{self.dataset_dir}/{scene_name}"
-            result_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_joint_opt/"
-            out_dir = f"{vggt_code_dir}/output/{scene_name}/pipeline_joint_opt/eval_vis_{mode}/"
+            result_dir = f"{self._output_dir(scene_name)}/pipeline_joint_opt/"
+            out_dir = f"{self._output_dir(scene_name)}/pipeline_joint_opt/eval_vis_{mode}/"
 
             if self.rebuild:
                 cmd = f"rm -rf {out_dir}"
@@ -1795,7 +1816,7 @@ class run_wonder_hoi:
                 os.system(cmd)            
 
             cmd = f"cd {vggt_code_dir} && "
-            cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_joint_opt_eval_vis_nvdiffrast.py "
+            cmd += f"{self.rhoi_python} robust_hoi_pipeline/pipeline_joint_opt_eval_vis_nvdiffrast.py "
             cmd += f"--result_folder {result_dir} "
             cmd += f"--out_dir {out_dir} "
             cmd += f"--SAM3D_dir {data_dir}/SAM3D_aligned_post_process "
@@ -1814,7 +1835,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir}/generator && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python scripts/align_hands_object.py "
+        cmd += f"{self.rhoi_python} scripts/align_hands_object.py "
         cmd += f"--seq_name {scene_name} "
         cmd += f"--mode {mode} "
         cmd += f"--out_dir {out_dir} "
@@ -1841,10 +1862,10 @@ class run_wonder_hoi:
     def hoi_pipeline_reg_remaining(self, scene_name, **kwargs):
         self.print_header(f"hoi pipeline register remaining for {scene_name}")
         data_dir = f"{self.dataset_dir}/{scene_name}"
-        out_dir = f"{vggt_code_dir}/output/{scene_name}"
+        out_dir = self._output_dir(scene_name)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_reg_remaining.py "
+        cmd += f"{self.rhoi_python} robust_hoi_pipeline/pipeline_reg_remaining.py "
         cmd += f"--data_dir {data_dir} "
         cmd += f"--output_dir {out_dir} "
         cmd += f"--cond_index {self.seq_config['cond_idx']} "
@@ -1855,7 +1876,7 @@ class run_wonder_hoi:
         """Run evaluation for a specific stage (before/after pose refinement)"""
         self.print_header(f"evaluate summary ({fit_mode}) for {scene_name}")
 
-        output_file = f"{vggt_code_dir}/output/metrics_summary/eval{fit_mode}.txt"
+        output_file = f"{self.output_root}/metrics_summary/eval{fit_mode}.txt"
 
         if self.rebuild:
             cmd = f"rm -rf {output_file}"
@@ -1863,8 +1884,8 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python extract_jsons.py"
-        cmd += f" --parent_dir output "
+        cmd += f"{self.rhoi_python} extract_jsons.py"
+        cmd += f" --parent_dir {self.output_root} "
         cmd += f" --metric_folder eval{fit_mode} "
         cmd += f" --output_file {output_file} "
         print(cmd)
@@ -1916,7 +1937,7 @@ class run_wonder_hoi:
         out_dir = f"{vggt_code_dir}/output/{scene_name}"
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_algin_SAM3D_with_HY.py "
+        cmd += f"{self.rhoi_python} robust_hoi_pipeline/pipeline_algin_SAM3D_with_HY.py "
         cmd += f"--data_dir {data_dir} "
         cmd += f"--output_dir {out_dir} "
         cmd += f"--cond_index {self.seq_config['cond_idx']} "
@@ -1929,7 +1950,7 @@ class run_wonder_hoi:
         out_dir = f"{vggt_code_dir}/output/{scene_name}"
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_3D_points_align_with_HY.py "
+        cmd += f"{self.rhoi_python} robust_hoi_pipeline/pipeline_3D_points_align_with_HY.py "
         cmd += f"--data_dir {data_dir} "
         cmd += f"--output_dir {out_dir} "
         print(cmd)
@@ -1941,7 +1962,7 @@ class run_wonder_hoi:
         out_dir = f"{vggt_code_dir}/output/{scene_name}"
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/pipeline_HY_to_SAM3D.py "
+        cmd += f"{self.rhoi_python} robust_hoi_pipeline/pipeline_HY_to_SAM3D.py "
         cmd += f"--data_dir {data_dir} "
         cmd += f"--output_dir {out_dir} "
         print(cmd)
@@ -1966,15 +1987,15 @@ class run_wonder_hoi:
 
         foundation_dir = kwargs.get(
             "foundation_dir",
-            f"{vggt_code_dir}/output_baseline/{scene_name}/foundation_sam3d",
+            f"{output_baseline_dir}/{scene_name}/foundation_sam3d",
         )
         bundle_sdf_dir = kwargs.get(
             "bundle_sdf_dir",
-            f"{vggt_code_dir}/output_baseline/{scene_name}/bundle_sdf",
+            f"{output_baseline_dir}/{scene_name}/bundle_sdf",
         )
         hold_dir = kwargs.get(
             "hold_dir",
-            f"{vggt_code_dir}/output_baseline/{scene_name}/hold",
+            f"{output_baseline_dir}/{scene_name}/hold",
         )
         joint_opt_dir = kwargs.get(
             "joint_opt_dir",
@@ -1982,7 +2003,7 @@ class run_wonder_hoi:
         )
         gt_dir = kwargs.get(
             "gt_dir",
-            f"{vggt_code_dir}/output_baseline/{scene_name}/gt",
+            f"{output_baseline_dir}/{scene_name}/gt",
         )
         out_dir = kwargs.get(
             "out_dir",
@@ -1995,7 +2016,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/eval_sum_vis.py "
+        cmd += f"{self.rhoi_python} robust_hoi_pipeline/eval_sum_vis.py "
         cmd += f"--foundation_dir {foundation_dir} "
         cmd += f"--bundle_sdf_dir {bundle_sdf_dir} "
         cmd += f"--hold_dir {hold_dir} "
@@ -2033,7 +2054,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python third_party/FoundationPose/eval_vis_nvdiffrast.py "
+        cmd += f"{self.rhoi_python} third_party/FoundationPose/eval_vis_nvdiffrast.py "
         cmd += f"--result_folder {result_folder} "
         cmd += f"--data_dir {data_dir} "
         cmd += f"--sam3d_dir {sam3d_dir} "
@@ -2060,7 +2081,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python third_party/bundlesdf/eval_vis_nvdiffrast.py "
+        cmd += f"{self.rhoi_python} third_party/bundlesdf/eval_vis_nvdiffrast.py "
         cmd += f"--seq_list {scene_name} "
         cmd += f"--output_root {output_root} "
         cmd += f"--data_root {data_root} "
@@ -2088,7 +2109,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python third_party/hold/code/eval_vis_nvdiffrast.py "
+        cmd += f"{self.rhoi_python} third_party/hold/code/eval_vis_nvdiffrast.py "
         cmd += f"--seq_list {scene_name} "
         cmd += f"--output_root {output_root} "
         cmd += f"--data_root {data_root} "
@@ -2113,7 +2134,7 @@ class run_wonder_hoi:
             os.system(cmd)
 
         cmd = f"cd {vggt_code_dir} && "
-        cmd += f"{self.conda_dir}/envs/vggsfm_tmp/bin/python robust_hoi_pipeline/eval_gt_vis.py "
+        cmd += f"{self.rhoi_python} robust_hoi_pipeline/eval_gt_vis.py "
         cmd += f"--data_dir {data_dir} "
         cmd += f"--out_dir {out_dir} "
 
@@ -2275,6 +2296,7 @@ if __name__ == "__main__":
     parser.add_argument('--eval', action='store_true', help='Evaluate the process')
     parser.add_argument('--reconstruction_dir', type=str, default=f"{home_dir}/Documents/project/WonderHOI/code/output_backup/[115][472254d][disable_global_ba]", help='Reconstruction folder')
     parser.add_argument('--conda_type', type=str, default=None, help='Conda environment type: anaconda3 or miniconda3')
+    parser.add_argument('--output_root', type=str, default=None, help='Output root directory (default: {code_dir}/output)')
 
     args, extras = parser.parse_known_args()
     
