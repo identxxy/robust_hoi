@@ -20,27 +20,22 @@ for arg in "$@"; do
 done
 
 # ---- Environment ----
-# ACP runs a non-login non-interactive shell; source login-shell init files
-# to replicate the same environment as CCI interactive sessions.
+# ACP is non-login non-interactive; source profile.d to get the same
+# LD_LIBRARY_PATH as CCI interactive sessions, then activate rhoi venv.
 for _f in /etc/profile.d/*.sh; do [ -r "$_f" ] && source "$_f"; done
 unset _f
 
 export PATH="/usr/local/cuda/bin:$PATH"
 export CUDA_HOME="/usr/local/cuda"
-
-# Use system python (torch 2.10+cu128) — NOT the rhoi venv (torch 2.1+cu118,
-# incompatible with system CUDA 12.x). CCI works for the same reason: system python.
-# Unset VIRTUAL_ENV / deactivate if somehow activated already.
-deactivate 2>/dev/null || true
-export PYTHONNOUSERSITE=1
+source /root/envs/rhoi/bin/activate
 
 log "CUDA driver: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)"
-log "Python: $(which python3)  torch: $(python3 -c 'import torch; print(torch.__version__)' 2>/dev/null || echo FAILED)"
-TORCH_VER=$(python3 -c 'import torch; print(torch.__version__)' 2>/dev/null || echo "FAILED")
+log "Python: $(which python)  torch: $(python -c 'import torch; print(torch.__version__)' 2>/dev/null || echo FAILED)"
+TORCH_VER=$(python -c 'import torch; print(torch.__version__)' 2>/dev/null || echo "FAILED")
 if [ "$TORCH_VER" = "FAILED" ]; then
   log "ERROR: torch import failed."
-  log "  torch import error: $(python3 -c 'import torch' 2>&1 | tr '\n' '|')"
   log "  LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+  log "  torch import error: $(python -c 'import torch' 2>&1 | tr '\n' '|')"
   exit 1
 fi
 log "torch OK: $TORCH_VER"
@@ -102,7 +97,7 @@ run_on_gpu() {
 
   # Step 1: Joint optimization (pose + object mesh)
   log "[GPU $gpu_id] Step 1/5 start: joint_opt"
-  CUDA_VISIBLE_DEVICES=$gpu_id python3 run_wonder_hoi.py \
+  CUDA_VISIBLE_DEVICES=$gpu_id python run_wonder_hoi.py \
     --execute_list obj_process \
     --process_list hoi_pipeline_joint_opt \
     --seq_list $seqs --rebuild --output_root "$OUTPUT_ROOT" \
@@ -111,7 +106,7 @@ run_on_gpu() {
 
   # Step 2: NeuS global (mesh reconstruction)
   log "[GPU $gpu_id] Step 2/5 start: neus_global"
-  CUDA_VISIBLE_DEVICES=$gpu_id python3 run_wonder_hoi.py \
+  CUDA_VISIBLE_DEVICES=$gpu_id python run_wonder_hoi.py \
     --execute_list obj_process \
     --process_list hoi_pipeline_neus_global \
     --seq_list $seqs --rebuild --output_root "$OUTPUT_ROOT" \
@@ -120,7 +115,7 @@ run_on_gpu() {
 
   # Step 3: Hand-object alignment
   log "[GPU $gpu_id] Step 3/5 start: hand alignment"
-  CUDA_VISIBLE_DEVICES=$gpu_id python3 run_wonder_hoi.py \
+  CUDA_VISIBLE_DEVICES=$gpu_id python run_wonder_hoi.py \
     --execute_list obj_process \
     --process_list hoi_pipeline_align_hand_object_h hoi_pipeline_align_hand_object_r hoi_pipeline_align_hand_object_o hoi_pipeline_align_hand_object_ho \
     --seq_list $seqs --rebuild --output_root "$OUTPUT_ROOT"
@@ -128,7 +123,7 @@ run_on_gpu() {
 
   # Step 4: Evaluation
   log "[GPU $gpu_id] Step 4/5 start: eval"
-  CUDA_VISIBLE_DEVICES=$gpu_id python3 run_wonder_hoi.py \
+  CUDA_VISIBLE_DEVICES=$gpu_id python run_wonder_hoi.py \
     --execute_list obj_process \
     --process_list hoi_pipeline_eval hoi_pipeline_eval_vis \
     --seq_list $seqs --rebuild --output_root "$OUTPUT_ROOT"
@@ -136,7 +131,7 @@ run_on_gpu() {
 
   # Step 5: Summary
   log "[GPU $gpu_id] Step 5/5 start: eval_sum"
-  CUDA_VISIBLE_DEVICES=$gpu_id python3 run_wonder_hoi.py \
+  CUDA_VISIBLE_DEVICES=$gpu_id python run_wonder_hoi.py \
     --execute_list obj_process \
     --process_list eval_sum eval_sum_vis \
     --seq_list $seqs --rebuild --output_root "$OUTPUT_ROOT"
