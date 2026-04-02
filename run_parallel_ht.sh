@@ -39,14 +39,18 @@ else
   export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
   log "WARNING: no pip nvidia libs found, using system CUDA libs only"
 fi
+log "CUDA driver: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)"
+log "/root mount: $(df -h /root | tail -1)"
+log "/root/envs/rhoi exists: $(ls /root/envs/rhoi/bin/python 2>/dev/null && echo YES || echo NO)"
 TORCH_VER=$(python -c 'import torch; print(torch.__version__)' 2>/dev/null || echo "FAILED")
 log "Python: $(which python)  torch: $TORCH_VER"
 if [ "$TORCH_VER" = "FAILED" ]; then
-  log "ERROR: torch import failed in $(which python). Fix the environment before running."
-  python -c 'import torch' 2>&1 | tail -3 >&2
+  log "ERROR: torch import failed. Diagnostics:"
+  log "  /root mount: $(mount | grep '/root' || echo 'not a mountpoint')"
+  log "  torch location: $(find /root/envs/rhoi -name 'torch' -maxdepth 6 -type d 2>/dev/null | head -3)"
+  python -c 'import torch' 2>&1 | tail -5 >&2
   exit 1
 fi
-log "CUDA driver: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)"
 
 export DATASET=ho3d
 export DATASET_DIR="/mnt/afs/xinyuan/data/HOD3D_v3/train/"
