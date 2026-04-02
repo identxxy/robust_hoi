@@ -27,9 +27,16 @@ source /root/envs/rhoi/bin/activate
 # (System /usr/local/cuda/lib64 may have older libnvJitLink that breaks torch import.)
 # Collect pip-installed nvidia CUDA lib dirs (e.g. nvidia-nvjitlink-cu12, nvidia-cusparse-cu12, ...)
 # These must come BEFORE system /usr/local/cuda/lib64 to avoid stale symbol errors.
+# Search both venv site-packages and system dist-packages.
 NVIDIA_LIBS=$(python -c "
-import glob, os
-dirs = glob.glob('/usr/local/lib/python*/dist-packages/nvidia/*/lib')
+import glob, os, sys
+patterns = [
+    os.path.join(os.path.dirname(os.path.dirname(sys.executable)), 'lib/python*/site-packages/nvidia/*/lib'),
+    '/usr/local/lib/python*/dist-packages/nvidia/*/lib',
+]
+dirs = []
+for p in patterns:
+    dirs.extend(glob.glob(p))
 print(':'.join(d for d in dirs if os.path.isdir(d)))
 " 2>/dev/null || echo "")
 if [ -n "$NVIDIA_LIBS" ]; then
