@@ -25,13 +25,19 @@ export CUDA_HOME="/usr/local/cuda"
 source /root/envs/rhoi/bin/activate
 # Put PyTorch's bundled CUDA libs first so they take precedence over system CUDA libs.
 # (System /usr/local/cuda/lib64 may have older libnvJitLink that breaks torch import.)
-TORCH_LIB=$(python -c "import torch, os; print(os.path.join(os.path.dirname(torch.__file__), 'lib'))" 2>/dev/null || echo "")
-if [ -n "$TORCH_LIB" ]; then
-  export LD_LIBRARY_PATH="$TORCH_LIB:/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
-  log "TORCH_LIB=$TORCH_LIB"
+# Collect pip-installed nvidia CUDA lib dirs (e.g. nvidia-nvjitlink-cu12, nvidia-cusparse-cu12, ...)
+# These must come BEFORE system /usr/local/cuda/lib64 to avoid stale symbol errors.
+NVIDIA_LIBS=$(python -c "
+import glob, os
+dirs = glob.glob('/usr/local/lib/python*/dist-packages/nvidia/*/lib')
+print(':'.join(d for d in dirs if os.path.isdir(d)))
+" 2>/dev/null || echo "")
+if [ -n "$NVIDIA_LIBS" ]; then
+  export LD_LIBRARY_PATH="$NVIDIA_LIBS:/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+  log "nvidia pip libs prepended to LD_LIBRARY_PATH"
 else
   export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
-  log "WARNING: could not detect torch lib dir, using system CUDA libs only"
+  log "WARNING: no pip nvidia libs found, using system CUDA libs only"
 fi
 log "Python: $(which python)  torch: $(python -c 'import torch; print(torch.__version__)' 2>/dev/null || echo FAILED)"
 log "CUDA driver: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)"
