@@ -39,7 +39,13 @@ else
   export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
   log "WARNING: no pip nvidia libs found, using system CUDA libs only"
 fi
-log "Python: $(which python)  torch: $(python -c 'import torch; print(torch.__version__)' 2>/dev/null || echo FAILED)"
+TORCH_VER=$(python -c 'import torch; print(torch.__version__)' 2>/dev/null || echo "FAILED")
+log "Python: $(which python)  torch: $TORCH_VER"
+if [ "$TORCH_VER" = "FAILED" ]; then
+  log "ERROR: torch import failed in $(which python). Fix the environment before running."
+  python -c 'import torch' 2>&1 | tail -3 >&2
+  exit 1
+fi
 log "CUDA driver: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)"
 
 export DATASET=ho3d
