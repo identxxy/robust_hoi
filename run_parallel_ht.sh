@@ -20,8 +20,15 @@ done
 # ---- Environment ----
 export PATH="/usr/local/cuda/bin:$PATH"
 export CUDA_HOME="/usr/local/cuda"
-export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
 source /root/envs/rhoi/bin/activate
+# Put PyTorch's bundled CUDA libs first so they take precedence over system CUDA libs.
+# (System /usr/local/cuda/lib64 may have older libnvJitLink that breaks torch import.)
+TORCH_LIB=$(python -c "import torch, os; print(os.path.join(os.path.dirname(torch.__file__), 'lib'))" 2>/dev/null || echo "")
+if [ -n "$TORCH_LIB" ]; then
+  export LD_LIBRARY_PATH="$TORCH_LIB:/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+else
+  export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+fi
 
 export DATASET=ho3d
 export DATASET_DIR="/mnt/afs/xinyuan/data/HOD3D_v3/train/"
