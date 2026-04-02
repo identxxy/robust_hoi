@@ -20,10 +20,11 @@ for arg in "$@"; do
 done
 
 # ---- Environment ----
-# ACP is non-login non-interactive; source profile.d to get the same
-# LD_LIBRARY_PATH as CCI interactive sessions, then activate rhoi venv.
-for _f in /etc/profile.d/*.sh; do [ -r "$_f" ] && source "$_f"; done
-unset _f
+# ACP's container runtime injects LD_LIBRARY_PATH with system cu128 nvidia libs,
+# which conflict with rhoi venv's torch 2.1+cu118. CCI (interactive SSH) doesn't
+# have this injection, which is why CCI works without changes.
+# Fix: clear LD_LIBRARY_PATH so rhoi torch uses its own embedded rpath instead.
+unset LD_LIBRARY_PATH
 
 export PATH="/usr/local/cuda/bin:$PATH"
 export CUDA_HOME="/usr/local/cuda"
