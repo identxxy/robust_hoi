@@ -57,10 +57,11 @@ if [ "$TORCH_VER" = "FAILED" ]; then
   log "  /root is mountpoint: $(mount | grep ' /root ' || echo 'no')"
   log "  rhoi python: $(ls /root/envs/rhoi/bin/python 2>/dev/null || echo MISSING)"
   log "  nvidia pip libs found: $NVIDIA_LIBS"
-  log "  all libnvJitLink on system:"
-  find / -name 'libnvJitLink.so*' 2>/dev/null | sed 's/^/    /' >&2
-  log "  torch import error:"
-  python -c 'import torch' 2>&1 >&2
+  log "  rhoi torch: $(ls /root/envs/rhoi/lib/python*/site-packages/torch/version.py 2>/dev/null || echo MISSING)"
+  log "  rhoi nvidia pkgs: $(ls /root/envs/rhoi/lib/python*/site-packages/nvidia/ 2>/dev/null | tr '\n' ' ' || echo NONE)"
+  log "  rhoi torch lib dir: $(ls /root/envs/rhoi/lib/python*/site-packages/torch/lib/ 2>/dev/null | grep nvJit | tr '\n' ' ' || echo 'none')"
+  log "  all libnvJitLink on system: $(find / -name 'libnvJitLink.so*' 2>/dev/null | tr '\n' ' ' || echo NONE)"
+  log "  torch import error: $(python -c 'import torch' 2>&1 | tr '\n' '|')"
   exit 1
 fi
 
