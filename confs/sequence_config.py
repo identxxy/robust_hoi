@@ -42,6 +42,8 @@ if dataset == "zed":
 
 elif dataset == "ho3d":
     dataset_dir = os.getenv("DATASET_DIR", "/data1/shibo/Documents/dataset/BundleSDF/HO3D_v3/train/")
+    _default_models_dir = os.path.join(os.path.dirname(dataset_dir.rstrip("/")), "models")
+    ho3d_models_dir = os.getenv("HO3D_MODELS_DIR", _default_models_dir)
     dataset_type = "ho3d"
     from confs.sequence_config_ho3d import sequences, sequence_name_list
 else:

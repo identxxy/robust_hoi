@@ -1999,7 +1999,7 @@ class run_wonder_hoi:
         )
         joint_opt_dir = kwargs.get(
             "joint_opt_dir",
-            f"{vggt_code_dir}/output/{scene_name}/pipeline_joint_opt/eval_vis",
+            f"{self._output_dir(scene_name)}/pipeline_joint_opt/eval_vis",
         )
         gt_dir = kwargs.get(
             "gt_dir",
@@ -2007,11 +2007,11 @@ class run_wonder_hoi:
         )
         out_dir = kwargs.get(
             "out_dir",
-            f"{vggt_code_dir}/output/metrics_summary/{scene_name}/",
+            f"{self.output_root}/metrics_summary/{scene_name}/",
         )
 
         if self.rebuild:
-            cmd = f"rm -rf {out_dir} && rm {vggt_code_dir}/output/metrics_summary/eval_sum_{scene_name}.mp4"
+            cmd = f"rm -rf {out_dir} && rm {self.output_root}/metrics_summary/eval_sum_{scene_name}.mp4"
             print(cmd)
             os.system(cmd)
 

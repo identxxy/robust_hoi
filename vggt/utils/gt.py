@@ -60,7 +60,7 @@ def load_data(seq_name, get_selected_fids_fn=None):
     # load in opencv format
 
     device = "cuda:0"
-    from confs.sequence_config import body_models_dir, gt_processed_dir
+    from confs.sequence_config import body_models_dir, gt_processed_dir, ho3d_models_dir
     human_model = MANO(
         body_models_dir, is_rhand=True, flat_hand_mean=False, use_pca=False
     ).to(device)
@@ -93,7 +93,7 @@ def load_data(seq_name, get_selected_fids_fn=None):
         # Use callback function
         selected_fids = get_selected_fids_fn()
     assert len(selected_fids) > 0
-    mesh_path = f"./ho3d_v3/models/{obj_name}/textured_simple.obj"
+    mesh_path = f"{ho3d_models_dir}/{obj_name}/textured_simple.obj"
     obj_mesh = trimesh.load(mesh_path, process=False)
 
     # OpenGL to OpenCV

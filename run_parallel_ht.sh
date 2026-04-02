@@ -36,6 +36,11 @@ OUTPUT_ROOT="/mnt/afs/xinyuan/run/robust_hoi/output"
 
 cd "$CODE_DIR"
 
+# ---- One-time fixes for known environment issues ----
+# FoundationPose's mycpp extension needs __init__.py to be importable as mycpp.build.mycpp
+touch third_party/FoundationPose/mycpp/__init__.py
+touch third_party/FoundationPose/mycpp/build/__init__.py
+
 # ---- Auto-detect GPUs ----
 NUM_GPUS=$(nvidia-smi -L 2>/dev/null | grep -c "^GPU")
 if [ "$NUM_GPUS" -eq 0 ]; then
