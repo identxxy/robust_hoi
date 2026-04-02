@@ -47,15 +47,20 @@ else
   log "WARNING: no pip nvidia libs found, using system CUDA libs only"
 fi
 log "CUDA driver: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)"
-log "/root mount: $(df -h /root | tail -1)"
-log "/root/envs/rhoi exists: $(ls /root/envs/rhoi/bin/python 2>/dev/null && echo YES || echo NO)"
+log "/usr/local/cuda -> $(readlink -f /usr/local/cuda 2>/dev/null || echo 'missing')"
+log "libnvJitLink: $(find /usr/local/cuda/lib64 -name 'libnvJitLink.so*' 2>/dev/null | tr '\n' ' ' || echo 'NONE')"
+log "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
 TORCH_VER=$(python -c 'import torch; print(torch.__version__)' 2>/dev/null || echo "FAILED")
 log "Python: $(which python)  torch: $TORCH_VER"
 if [ "$TORCH_VER" = "FAILED" ]; then
-  log "ERROR: torch import failed. Diagnostics:"
-  log "  /root mount: $(mount | grep '/root' || echo 'not a mountpoint')"
-  log "  torch location: $(find /root/envs/rhoi -name 'torch' -maxdepth 6 -type d 2>/dev/null | head -3)"
-  python -c 'import torch' 2>&1 | tail -5 >&2
+  log "ERROR: torch import failed. Full diagnostics:"
+  log "  /root is mountpoint: $(mount | grep ' /root ' || echo 'no')"
+  log "  rhoi python: $(ls /root/envs/rhoi/bin/python 2>/dev/null || echo MISSING)"
+  log "  nvidia pip libs found: $NVIDIA_LIBS"
+  log "  all libnvJitLink on system:"
+  find / -name 'libnvJitLink.so*' 2>/dev/null | sed 's/^/    /' >&2
+  log "  torch import error:"
+  python -c 'import torch' 2>&1 >&2
   exit 1
 fi
 
