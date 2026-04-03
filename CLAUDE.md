@@ -141,3 +141,6 @@ output/
 ## Third-Party Dependencies
 - `third_party/utils_simba/`: Custom utilities for rendering, depth processing
 - `dependency/LightGlue/`: Feature matching (installed separately)
+
+## Note
+Write notes in `.note` dir. All note in `.note` should be in Chinese, to explain details to the user.
